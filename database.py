@@ -1,8 +1,9 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Your PostgreSQL connection string
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:Admin@localhost:5432/hospital_db"
+SQLALCHEMY_DATABASE_URL = os.getenv("postgresql://healthcare_platform_jkrf_user:x8pOnHKVszMO4xwo15Ncvp8DIU1m4xRg@dpg-d89ksgjbc2fs73fb8ot0-a/healthcare_platform_jkrf","postgresql://postgres:Admin@localhost:5432/hospital_db")
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
