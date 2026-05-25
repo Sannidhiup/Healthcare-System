@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
 
+// ── THE MAGIC VARIABLE ──
+// Vercel will use the first one, your laptop will use the second one!
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
+
 function AdminDashboard() {
   const token = localStorage.getItem('token');
   const [activeTab, setActiveTab] = useState('slots');
@@ -33,7 +37,7 @@ function AdminDashboard() {
 
   const loadSystemData = async () => {
     try {
-      const res = await axios.get('http://127.0.0.1:8001/system-overview');
+      const res = await axios.get(`${API_BASE_URL}/system-overview`);
       setHospitals(res.data.hospitals || []);
       setDoctors(res.data.doctors || []);
       setDepartments(res.data.departments || []);
@@ -52,7 +56,7 @@ function AdminDashboard() {
     if (hasEmptyFields) { showStatusNotification("Please fill out Date, Start Time, and End Time for all rows.", true); return; }
     const dataToSend = slots.map(s => ({ doctor_id: parseInt(docId), start_date: s.date, end_date: s.date, start_time: s.start_time, end_time: s.end_time }));
     try {
-      await axios.post('http://127.0.0.1:8001/admin/generate-slots', dataToSend, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`${API_BASE_URL}/admin/generate-slots`, dataToSend, { headers: { Authorization: `Bearer ${token}` } });
       showStatusNotification(`Successfully generated 30-minute intervals automatically for Doctor ID: ${docId}`);
       setSlots([{ date: '', start_time: '', end_time: '' }]);
       if (viewDate) handleFetchSlots();
@@ -62,7 +66,7 @@ function AdminDashboard() {
   const handleFetchSlots = async () => {
     if (!docId || !viewDate) { showStatusNotification("Please select a Doctor and specify a filtering Target Date first.", true); return; }
     try {
-      const res = await axios.get(`http://127.0.0.1:8001/slots/${docId}?date=${viewDate}`);
+      const res = await axios.get(`${API_BASE_URL}/slots/${docId}?date=${viewDate}`);
       setActiveSlots(res.data);
     } catch { showStatusNotification("Could not find slot records matching specified variables.", true); }
   };
@@ -73,10 +77,10 @@ function AdminDashboard() {
     const { type, id } = deleteModal;
     setDeleteModal({ show: false, type: '', id: null, message: '' });
     try {
-      if (type === 'slot') { await axios.delete(`http://127.0.0.1:8001/slots/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Slot entry deleted cleanly."); handleFetchSlots(); }
-      else if (type === 'hospital') { await axios.delete(`http://127.0.0.1:8001/hospitals/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital reference system and child nodes pruned."); loadSystemData(); }
-      else if (type === 'department') { await axios.delete(`http://127.0.0.1:8001/departments/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Target diagnostic department entity dropped."); loadSystemData(); }
-      else if (type === 'doctor') { await axios.delete(`http://127.0.0.1:8001/doctors/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Doctor practitioner profiling block stripped out."); loadSystemData(); }
+      if (type === 'slot') { await axios.delete(`${API_BASE_URL}/slots/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Slot entry deleted cleanly."); handleFetchSlots(); }
+      else if (type === 'hospital') { await axios.delete(`${API_BASE_URL}/hospitals/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital reference system and child nodes pruned."); loadSystemData(); }
+      else if (type === 'department') { await axios.delete(`${API_BASE_URL}/departments/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Target diagnostic department entity dropped."); loadSystemData(); }
+      else if (type === 'doctor') { await axios.delete(`${API_BASE_URL}/doctors/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Doctor practitioner profiling block stripped out."); loadSystemData(); }
     } catch { showStatusNotification("Execution failed. Record cascade constraint may be locked.", true); }
   };
 
@@ -88,8 +92,8 @@ function AdminDashboard() {
   const handleHospitalSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (hospForm.id) { await axios.put(`http://127.0.0.1:8001/hospitals/${hospForm.id}`, { name: hospForm.name, location: hospForm.location }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital data modified successfully."); }
-      else { await axios.post('http://127.0.0.1:8001/hospitals/bulk', [{ name: hospForm.name, location: hospForm.location }], { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Hospital "${hospForm.name}" registered safely.`); }
+      if (hospForm.id) { await axios.put(`${API_BASE_URL}/hospitals/${hospForm.id}`, { name: hospForm.name, location: hospForm.location }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital data modified successfully."); }
+      else { await axios.post(`${API_BASE_URL}/hospitals/bulk`, [{ name: hospForm.name, location: hospForm.location }], { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Hospital "${hospForm.name}" registered safely.`); }
       setHospForm({ id: null, name: '', location: '' }); loadSystemData();
     } catch { showStatusNotification("Hospital transaction processing failed.", true); }
   };
@@ -100,7 +104,7 @@ function AdminDashboard() {
     const rows = bulkHospitalsInput.trim().split('\n');
     const hospitalPayloadArray = rows.map(row => { const parts = row.split(','); return { name: parts[0]?.trim() || '', location: parts[1]?.trim() || '' }; });
     try {
-      await axios.post('http://127.0.0.1:8001/hospitals/bulk', hospitalPayloadArray, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`${API_BASE_URL}/hospitals/bulk`, hospitalPayloadArray, { headers: { Authorization: `Bearer ${token}` } });
       showStatusNotification(`Bulk saved ${hospitalPayloadArray.length} clinical facilities successfully.`);
       setBulkHospitalsInput(''); loadSystemData();
     } catch { showStatusNotification("Bulk operational load failed.", true); }
@@ -110,8 +114,8 @@ function AdminDashboard() {
     e.preventDefault();
     const payload = { name: deptForm.name, hospital_id: parseInt(deptForm.hospital_id) };
     try {
-      if (deptForm.id) { await axios.put(`http://127.0.0.1:8001/departments/${deptForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Department metrics modified successfully."); }
-      else { await axios.post('http://127.0.0.1:8001/departments', payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Department division "${deptForm.name}" activated.`); }
+      if (deptForm.id) { await axios.put(`${API_BASE_URL}/departments/${deptForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Department metrics modified successfully."); }
+      else { await axios.post(`${API_BASE_URL}/departments`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Department division "${deptForm.name}" activated.`); }
       setDeptForm({ id: null, name: '', hospital_id: '' }); loadSystemData();
     } catch { showStatusNotification("Department sync transaction error.", true); }
   };
@@ -121,7 +125,7 @@ function AdminDashboard() {
     if (!deptForm.hospital_id || !bulkDepartmentsInput.trim()) { showStatusNotification("Provide a valid Hospital ID inside the form field first.", true); return; }
     const lines = bulkDepartmentsInput.trim().split('\n');
     try {
-      for (let line of lines) { if (line.trim()) await axios.post('http://127.0.0.1:8001/departments', { name: line.trim(), hospital_id: parseInt(deptForm.hospital_id) }, { headers: { Authorization: `Bearer ${token}` } }); }
+      for (let line of lines) { if (line.trim()) await axios.post(`${API_BASE_URL}/departments`, { name: line.trim(), hospital_id: parseInt(deptForm.hospital_id) }, { headers: { Authorization: `Bearer ${token}` } }); }
       showStatusNotification(`Successfully generated all line-pasted departments.`);
       setBulkDepartmentsInput(''); loadSystemData();
     } catch { showStatusNotification("Failed to finalize multi-row additions.", true); }
@@ -131,8 +135,8 @@ function AdminDashboard() {
     e.preventDefault();
     const payload = { name: docForm.name, email: docForm.email, password: docForm.password || "dummy123", phone: docForm.phone, role: "DOCTOR", specialization: docForm.specialization, years_of_experience: parseInt(docForm.years_of_experience), hospital_id: parseInt(docForm.hospital_id), department_id: parseInt(docForm.department_id) };
     try {
-      if (docForm.id) { await axios.put(`http://127.0.0.1:8001/doctors/${docForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name}'s profile criteria updated.`); }
-      else { await axios.post('http://127.0.0.1:8001/doctors', payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name} integrated into active directory.`); }
+      if (docForm.id) { await axios.put(`${API_BASE_URL}/doctors/${docForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name}'s profile criteria updated.`); }
+      else { await axios.post(`${API_BASE_URL}/doctors`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name} integrated into active directory.`); }
       setDocForm({ id: null, name: '', email: '', password: '', phone: '', specialization: '', years_of_experience: '', hospital_id: '', department_id: '' }); loadSystemData();
     } catch { showStatusNotification("Personnel sync validation rejected.", true); }
   };
