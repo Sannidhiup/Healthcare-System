@@ -9,6 +9,9 @@ function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
+  // NEW: State to track if the password should be visible
+  const [showPassword, setShowPassword] = useState(false);
+  
   // Custom Modal State with error color handling
   const [modal, setModal] = useState({ show: false, message: '', isError: false });
   
@@ -17,7 +20,6 @@ function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      // FIX: Changed hardcoded localhost to API_BASE_URL
       const res = await axios.post(`${API_BASE_URL}/login`, { email, password });
       
       // 1. Securely cache the system token
@@ -106,14 +108,32 @@ function Login() {
           />
 
           <label style={labelStyle}>Password</label>
-          <input 
-            type="password" 
-            required 
-            value={password} 
-            onChange={(e) => setPassword(e.target.value)} 
-            style={inputStyle} 
-            placeholder="••••••••" 
-          />
+          {/* NEW: Custom relative wrapper for the password eye icon */}
+          <div style={{ position: 'relative' }}>
+            <input 
+              type={showPassword ? "text" : "password"} 
+              required 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              style={{ ...inputStyle, paddingRight: '40px' }} 
+              placeholder="••••••••" 
+            />
+            <span 
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                cursor: 'pointer',
+                fontSize: '18px',
+                userSelect: 'none'
+              }}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? '🙈' : '👁️'}
+            </span>
+          </div>
 
           <button type="submit" style={btnStyle}>Login</button>
         </form>
