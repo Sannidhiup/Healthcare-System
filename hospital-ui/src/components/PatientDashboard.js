@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
 
+// ── THE MAGIC VARIABLE ──
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
+
 function PatientDashboard() {
   const token = localStorage.getItem('token');
   const [notification, setNotification] = useState({ show: false, message: '', isError: false });
@@ -23,10 +26,10 @@ function PatientDashboard() {
 
   const loadInitialPatientWorkspace = useCallback(async () => {
     try {
-      const overviewRes = await axios.get('http://127.0.0.1:8001/system-overview');
+      const overviewRes = await axios.get(`${API_BASE_URL}/system-overview`);
       setHospitals(overviewRes.data.hospitals || []);
       setDoctors(overviewRes.data.doctors || []);
-      const appointmentsRes = await axios.get('http://127.0.0.1:8001/patient/appointments', { headers: { Authorization: `Bearer ${token}` } });
+      const appointmentsRes = await axios.get(`${API_BASE_URL}/patient/appointments`, { headers: { Authorization: `Bearer ${token}` } });
       setMyAppointments(appointmentsRes.data || []);
     } catch (err) { console.error("Error setting up patient environment maps."); }
   }, [token]);
@@ -46,7 +49,7 @@ function PatientDashboard() {
   const handleFetchAvailableSlots = async () => {
     if (!selectedDoctor || !filterDate) { showStatusNotification("Please select a Doctor and specific Target Date first.", true); return; }
     try {
-      const res = await axios.get(`http://127.0.0.1:8001/slots/${selectedDoctor}?date=${filterDate}`);
+      const res = await axios.get(`${API_BASE_URL}/slots/${selectedDoctor}?date=${filterDate}`);
       const now = new Date();
       const year = now.getFullYear(); const month = String(now.getMonth() + 1).padStart(2, '0'); const day = String(now.getDate()).padStart(2, '0');
       const todayString = `${year}-${month}-${day}`;
@@ -67,7 +70,7 @@ function PatientDashboard() {
 
   const handleRescheduleClick = async (appt) => {
     try {
-      const res = await axios.get(`http://127.0.0.1:8001/slots/${appt.doctor_id}?date=${appt.date}`);
+      const res = await axios.get(`${API_BASE_URL}/slots/${appt.doctor_id}?date=${appt.date}`);
       const now = new Date();
       const year = now.getFullYear(); const month = String(now.getMonth() + 1).padStart(2, '0'); const day = String(now.getDate()).padStart(2, '0');
       const todayString = `${year}-${month}-${day}`;
@@ -86,11 +89,11 @@ function PatientDashboard() {
     const { type, targetId, extraData } = actionModal;
     setActionModal({ show: false, type: '', targetId: null, message: '', extraData: null });
     try {
-      if (type === 'BOOK') { await axios.post('http://127.0.0.1:8001/appointments/book', { slot_id: targetId }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Appointment confirmed successfully."); }
-      else if (type === 'CANCEL') { await axios.delete(`http://127.0.0.1:8001/appointments/cancel/${targetId}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Appointment canceled cleanly."); }
+      if (type === 'BOOK') { await axios.post(`${API_BASE_URL}/appointments/book`, { slot_id: targetId }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Appointment confirmed successfully."); }
+      else if (type === 'CANCEL') { await axios.delete(`${API_BASE_URL}/appointments/cancel/${targetId}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Appointment canceled cleanly."); }
       else if (type === 'RESCHEDULE') {
         if (!extraData) { showStatusNotification("Rescheduling aborted: No new slot timing was selected.", true); return; }
-        await axios.put(`http://127.0.0.1:8001/appointments/reschedule/${targetId}`, { new_slot_id: parseInt(extraData) }, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.put(`${API_BASE_URL}/appointments/reschedule/${targetId}`, { new_slot_id: parseInt(extraData) }, { headers: { Authorization: `Bearer ${token}` } });
         showStatusNotification("Appointment schedule successfully modified.");
       }
       loadInitialPatientWorkspace();
@@ -271,7 +274,7 @@ const P = {
   label: { fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 },
   inp: { width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, color: '#111827', boxSizing: 'border-box', background: '#fafafa', outline: 'none' },
   sel: { width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, color: '#111827', boxSizing: 'border-box', background: '#fafafa', outline: 'none' },
-  searchBtn: { width: '100%', padding: '13px', background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', marginTop: 4 },
+  searchBtn: { width: '100%', padding: '13px', background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', color: 'white', border: 'none', borderRadius: '10px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', marginTop: 4 },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
   th: { textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '10px 14px', borderBottom: '1px solid #f3f4f6' },
   td: { padding: '13px 14px', verticalAlign: 'middle' },

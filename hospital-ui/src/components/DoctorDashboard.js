@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
 
+// ── THE MAGIC VARIABLE ──
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
+
 function DoctorDashboard() {
   const token = localStorage.getItem('token');
   const [notification, setNotification] = useState({ show: false, message: '', isError: false });
@@ -14,7 +17,8 @@ function DoctorDashboard() {
 
   const loadDoctorSchedule = useCallback(async () => {
     try {
-      const res = await axios.get('http://127.0.0.1:8001/doctor/my-schedule', { headers: { Authorization: `Bearer ${token}` } });
+      // FIX: Replaced localhost with the dynamic cloud URL
+      const res = await axios.get(`${API_BASE_URL}/doctor/my-schedule`, { headers: { Authorization: `Bearer ${token}` } });
       setSchedule(res.data || []);
     } catch (err) {
       console.error("Failed to query target doctor schedule matrix mapping.");
