@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+// The dynamic variable pointing to Render
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
+
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,7 +17,8 @@ function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://127.0.0.1:8001/login', { email, password });
+      // FIX: Changed hardcoded localhost to API_BASE_URL
+      const res = await axios.post(`${API_BASE_URL}/login`, { email, password });
       
       // 1. Securely cache the system token
       localStorage.setItem('token', res.data.access_token);

@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+// The dynamic variable pointing to Render
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
+
 function Register() {
   const navigate = useNavigate();
 
@@ -27,7 +30,8 @@ function Register() {
         age: parseInt(formData.age)
       };
 
-      await axios.post('http://127.0.0.1:8001/register', payload);
+      // FIX: Changed hardcoded localhost to API_BASE_URL
+      await axios.post(`${API_BASE_URL}/register`, payload);
 
       setModal({ 
         show: true, 
