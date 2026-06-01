@@ -23,6 +23,10 @@ function PatientDashboard() {
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
+  
+  // ── NEW AI FEATURE STATES ──
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   const loadInitialPatientWorkspace = useCallback(async () => {
     try {
@@ -98,7 +102,32 @@ function PatientDashboard() {
       }
       loadInitialPatientWorkspace();
       if (selectedDoctor && filterDate) handleFetchAvailableSlots();
-    } catch { showStatusNotification("Transaction rejected. Verification constraints failed.", true); }
+    } catch { showStatusNotification("Oops! We couldn't complete this request. Please try again.", true); }
+  };
+
+  // ── NEW: FILE UPLOAD HANDLER ──
+  const handleUploadRecords = async () => {
+    if (uploadedFiles.length === 0) return;
+    setIsUploading(true);
+    
+    // Create the multipart form envelope
+    const formData = new FormData();
+    uploadedFiles.forEach(file => formData.append("files", file));
+
+    try {
+      // Send to the FastAPI backend (we will build this endpoint next!)
+      await axios.post(`${API_BASE_URL}/patient/upload-records`, formData, {
+        headers: { Authorization: `Bearer ${token}` } // Axios automatically sets multipart headers for FormData
+      });
+      
+      showStatusNotification("Medical records securely uploaded to cloud storage!");
+      setUploadedFiles([]); // Clear out the input after success
+    } catch (error) {
+      showStatusNotification("Failed to upload records to the server.", true);
+      console.error(error);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -120,7 +149,7 @@ function PatientDashboard() {
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', fontSize: 26 }}>
               {actionModal.type === 'CANCEL' ? '🚫' : actionModal.type === 'RESCHEDULE' ? '🔄' : '📅'}
             </div>
-            <h3 style={{ margin: '0 0 10px', color: '#111827', fontSize: 18, fontWeight: 700 }}>Transaction Confirmation</h3>
+            <h3 style={{ margin: '0 0 10px', color: '#111827', fontSize: 18, fontWeight: 700 }}>Confirm Appointment</h3>
             <p style={{ margin: '0 0 22px', color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>{actionModal.message}</p>
 
             {actionModal.type === 'RESCHEDULE' && (
@@ -151,60 +180,98 @@ function PatientDashboard() {
 
       <div style={{ padding: '28px', display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24, alignItems: 'flex-start' }}>
 
-        {/* ── LEFT: FIND & BOOK ── */}
-        <div style={P.card}>
-          <div style={P.cardTop}>
-            <span style={{ fontSize: 22 }}>🔍</span>
-            <div>
-              <div style={P.cardTitle}>Find & Book Consultation</div>
-              <div style={P.cardSub}>Search available doctor slots</div>
+        {/* ── LEFT COLUMN ── */}
+        <div>
+          {/* 1. FIND & BOOK CARD */}
+          <div style={P.card}>
+            <div style={P.cardTop}>
+              <span style={{ fontSize: 22 }}>🔍</span>
+              <div>
+                <div style={P.cardTitle}>Find & Book Consultation</div>
+                <div style={P.cardSub}>Search available doctor slots</div>
+              </div>
+            </div>
+            <div style={P.cardBody}>
+
+              <div style={P.field}>
+                <label style={P.label}>Select Hospital Facility</label>
+                <select value={selectedHospital} onChange={e => { setSelectedHospital(e.target.value); setSelectedDoctor(''); setAvailableSlots([]); }} style={P.sel}>
+                  <option value="">-- Select Medical Facility --</option>
+                  {hospitals.map(h => <option key={h.id} value={h.id}>{h.name} ({h.location})</option>)}
+                </select>
+              </div>
+
+              <div style={P.field}>
+                <label style={P.label}>Select Specializing Practitioner</label>
+                <select value={selectedDoctor} onChange={e => { setSelectedDoctor(e.target.value); setAvailableSlots([]); }} style={{ ...P.sel, opacity: !selectedHospital ? 0.6 : 1 }} disabled={!selectedHospital}>
+                  <option value="">-- Choose Practitioner --</option>
+                  {validFilteredDoctorsList.map(d => <option key={d.id} value={d.id}>Dr. {d.name} ({d.specialization})</option>)}
+                </select>
+              </div>
+
+              <div style={P.field}>
+                <label style={P.label}>Target Consultation Date</label>
+                <input type="date" value={filterDate} onChange={e => { setFilterDate(e.target.value); setAvailableSlots([]); }} style={P.inp} />
+              </div>
+
+              <button onClick={handleFetchAvailableSlots} style={P.searchBtn}>🔍 Search Slots</button>
+
+              {availableSlots.length > 0 && (
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
+                    Available 30-Min Openings ({availableSlots.length})
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {availableSlots.map(slot => (
+                      <button key={slot.id} onClick={() => handleBookSlotClick(slot)} style={{ background: 'white', color: '#0369a1', border: '1.5px solid #7dd3fc', padding: '8px 14px', borderRadius: 9, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: '0 2px 6px rgba(0,0,0,0.06)', transition: 'all 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#e0f2fe'; e.currentTarget.style.borderColor = '#0369a1'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#7dd3fc'; }}>
+                        ⏱ {slot.start_time} – {slot.end_time}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div style={P.cardBody}>
 
-            <div style={P.field}>
-              <label style={P.label}>Select Hospital Facility</label>
-              <select value={selectedHospital} onChange={e => { setSelectedHospital(e.target.value); setSelectedDoctor(''); setAvailableSlots([]); }} style={P.sel}>
-                <option value="">-- Select Medical Facility --</option>
-                {hospitals.map(h => <option key={h.id} value={h.id}>{h.name} ({h.location})</option>)}
-              </select>
-            </div>
-
-            <div style={P.field}>
-              <label style={P.label}>Select Specializing Practitioner</label>
-              <select value={selectedDoctor} onChange={e => { setSelectedDoctor(e.target.value); setAvailableSlots([]); }} style={{ ...P.sel, opacity: !selectedHospital ? 0.6 : 1 }} disabled={!selectedHospital}>
-                <option value="">-- Choose Practitioner --</option>
-                {validFilteredDoctorsList.map(d => <option key={d.id} value={d.id}>Dr. {d.name} ({d.specialization})</option>)}
-              </select>
-            </div>
-
-            <div style={P.field}>
-              <label style={P.label}>Target Consultation Date</label>
-              <input type="date" value={filterDate} onChange={e => { setFilterDate(e.target.value); setAvailableSlots([]); }} style={P.inp} />
-            </div>
-
-            <button onClick={handleFetchAvailableSlots} style={P.searchBtn}>🔍 Search Slots</button>
-
-            {availableSlots.length > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
-                  Available 30-Min Openings ({availableSlots.length})
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {availableSlots.map(slot => (
-                    <button key={slot.id} onClick={() => handleBookSlotClick(slot)} style={{ background: 'white', color: '#0369a1', border: '1.5px solid #7dd3fc', padding: '8px 14px', borderRadius: 9, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: '0 2px 6px rgba(0,0,0,0.06)', transition: 'all 0.15s' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#e0f2fe'; e.currentTarget.style.borderColor = '#0369a1'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#7dd3fc'; }}>
-                      ⏱ {slot.start_time} – {slot.end_time}
-                    </button>
-                  ))}
-                </div>
+          {/* 2. UPLOAD MEDICAL RECORDS CARD */}
+          <div style={{ ...P.card, marginTop: '24px' }}>
+            <div style={{...P.cardTop, background: '#f0fdf4', borderBottom: '1px solid #dcfce3'}}>
+              <span style={{ fontSize: 22 }}>📁</span>
+              <div>
+                <div style={P.cardTitle}>Upload Medical Records</div>
+                <div style={P.cardSub}>Securely save PDFs for your doctors</div>
               </div>
-            )}
+            </div>
+            <div style={P.cardBody}>
+              <div style={P.field}>
+                <label style={P.label}>Select Lab Reports or Summaries (PDF)</label>
+                <input 
+                  type="file" 
+                  accept=".pdf" 
+                  multiple 
+                  onChange={(e) => setUploadedFiles(Array.from(e.target.files))} 
+                  style={{...P.inp, background: 'white'}}
+                />
+              </div>
+              <button 
+                onClick={handleUploadRecords} 
+                disabled={isUploading || uploadedFiles.length === 0}
+                style={{ 
+                  ...P.searchBtn, 
+                  background: isUploading || uploadedFiles.length === 0 ? '#d1d5db' : 'linear-gradient(135deg, #10b981, #059669)', 
+                  boxShadow: isUploading || uploadedFiles.length === 0 ? 'none' : '0 4px 14px rgba(16,185,129,0.3)',
+                  cursor: isUploading || uploadedFiles.length === 0 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isUploading ? '⏳ Uploading to Cloud...' : '☁️ Upload Files'}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ── RIGHT: MY APPOINTMENTS ── */}
+        {/* ── RIGHT COLUMN: MY APPOINTMENTS ── */}
         <div style={P.card}>
           <div style={P.cardTop}>
             <span style={{ fontSize: 22 }}>📋</span>
@@ -237,7 +304,7 @@ function PatientDashboard() {
                           <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                             {appt.doctor_name.slice(0, 2).toUpperCase()}
                           </div>
-                          <span style={{ fontWeight: 700, color: '#111827' }}>Dr. {appt.doctor_name}</span>
+                          <span style={{ fontWeight: 700, color: '#111827' }}>{appt.doctor_name}</span>
                         </div>
                       </td>
                       <td style={{ ...P.td, color: '#6b7280', fontSize: 13 }}>{appt.date}</td>
