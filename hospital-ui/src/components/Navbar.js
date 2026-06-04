@@ -7,8 +7,19 @@ function Navbar() {
   // Custom Logout Confirmation Modal State
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // ── NEW: Pull user context from browser memory ──
+  const userName = localStorage.getItem('userName') || '';
+  const userRole = localStorage.getItem('userRole') || '';
+  const extraInfo = localStorage.getItem('userExtraInfo') || '';
+
   const executeLogout = () => {
     localStorage.removeItem('token'); // Clears JWT session cache securely
+    
+    // Optional: clear user info as well for absolute security
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userExtraInfo');
+    
     setShowConfirm(false);
     navigate('/'); // Smoothly routes back to the custom Login screen
   };
@@ -19,10 +30,35 @@ function Navbar() {
         🩺 CoreCare Management System
       </div>
       
-      {/* Visual Trigger Button */}
-      <button onClick={() => setShowConfirm(true)} style={logoutBtnStyle}>
-        Log Out
-      </button>
+      {/* ── NEW: Right side grouping for Profile Info and Logout Button ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        
+        {/* Context-Aware Profile Header */}
+        <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#111827' }}>
+          {/* DOCTOR VIEW */}
+          {userRole === 'DOCTOR' && (
+             <span>
+               {userName.includes('Dr') ? userName : `Dr. ${userName}`} 
+               <span style={{ color: '#6b7280', fontWeight: 'normal' }}> | {extraInfo}</span>
+             </span>
+          )}
+
+          {/* ADMIN VIEW */}
+          {userRole === 'ADMIN' && (
+             <span style={{ color: '#059669' }}>ADMIN</span>
+          )}
+
+          {/* PATIENT VIEW (Default) */}
+          {userRole === 'PATIENT' && (
+             <span>{userName}</span>
+          )}
+        </div>
+
+        {/* Visual Trigger Button */}
+        <button onClick={() => setShowConfirm(true)} style={logoutBtnStyle}>
+          Log Out
+        </button>
+      </div>
 
       {/* ==========================================
           CUSTOM REAL-WORLD LOGOUT CONFIRMATION MODAL

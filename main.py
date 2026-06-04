@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from database import Base, engine, SessionLocal
 import models, schemas
@@ -8,10 +8,18 @@ from datetime import datetime, timedelta, date as date_type
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
+import os
+import uuid
+import re
+
+# --- NEW AI IMPORTS ---
+import google.generativeai as genai
+from pypdf import PdfReader
+import io
 
 app = FastAPI()
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,8 +33,21 @@ app.add_middleware(
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
 security = HTTPBearer()
+
+# ---------------- GEMINI AI CONFIG ---------------- #
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=GOOGLE_API_KEY)
+
+embed_model = 'models/gemini-embedding-001'
+chat_model = genai.GenerativeModel('gemini-2.5-flash')
+
+# ---------------- SUPABASE CLOUD STORAGE CONFIG ---------------- #
+SUPABASE_URL = "https://yicilvfuyfzsbbjmnrqc.supabase.co"
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+BUCKET_NAME = "hospital-patient-records"
 
 # Create tables on startup
 Base.metadata.create_all(bind=engine)
@@ -71,9 +92,20 @@ class RescheduleRequest(BaseModel):
 class DirectBookRequest(BaseModel):
     slot_id: int
 
+class ChatRequest(BaseModel):
+    patient_id: int
+    question: str
+    doctor_name: str = "Doctor"
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+class SummaryRequest(BaseModel):
+    summary: str
+
 @app.get("/")
 def home():
-    return {"message": "Hospital Management System API v3 (Manual Inventory) is Online"}
+    return {"message": "Hospital Management System API v3 (AI Integrated) is Online"}
 
 # =========================================================
 # ---------------- AUTH & REGISTRATION ---------------- #
@@ -114,18 +146,28 @@ def login(data: schemas.LoginSchema, db: Session = Depends(get_db)):
     
     token = create_access_token({"user_id": user.id, "role": user.role})
     
-    # ✅ Now returning the exact name to the frontend!
-    return {
+    response_data = {
         "access_token": token, 
         "token_type": "bearer",
         "name": user.name, 
-        "role": user.role
+        "role": user.role,
+        "extra_info": "" 
     }
+
+    if user.role == "DOCTOR":
+        doctor = db.query(models.Doctor).filter_by(user_id=user.id).first()
+        if doctor:
+            hospital = db.query(models.Hospital).filter_by(id=doctor.hospital_id).first()
+            department = db.query(models.Department).filter_by(id=doctor.department_id).first()
+            h_name = hospital.name if hospital else "Unknown Hospital"
+            d_name = department.name if department else "Unknown Dept"
+            response_data["extra_info"] = f"{d_name} | {h_name}"
+
+    return response_data
 
 # =========================================================
 # ---------------- INFRASTRUCTURE APIs ---------------- #
 # =========================================================
-
 @app.post("/hospitals/bulk")
 def create_multiple_hospitals(data: List[schemas.HospitalCreate], db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN":
@@ -156,8 +198,6 @@ def delete_hospital(id: int, db: Session = Depends(get_db), current_user=Depends
     db.delete(hospital) 
     db.commit()
     return {"msg": "Hospital and all related data removed."}
-
-# --- DEPARTMENT APIs ---
 
 @app.post("/departments")
 def create_department(data: schemas.DepartmentCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -195,12 +235,10 @@ def delete_department(id: int, db: Session = Depends(get_db), current_user=Depen
 # =========================================================
 # ---------------- DOCTOR APIs ---------------- #
 # =========================================================
-
 @app.post("/doctors")
 def create_doctor(data: schemas.DoctorCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN":
         raise HTTPException(403, "Admin only")
-    
     new_user = models.User(
         name=data.name, email=data.email, 
         password=hash_password(data.password), 
@@ -253,7 +291,6 @@ def delete_doctor(id: int, db: Session = Depends(get_db), current_user=Depends(g
 # =========================================================
 # ---------------- BULK SLOT SYSTEM ---------------- #
 # =========================================================
-
 @app.post("/admin/generate-slots")
 def generate_slots_automatic_bulk(
     data: List[schemas.BulkSlotCreate], 
@@ -267,7 +304,6 @@ def generate_slots_automatic_bulk(
         )
 
     slots_created_count = 0
-
     for entry in data:
         try:
             start_time_obj = datetime.strptime(entry.start_time, "%H:%M")
@@ -276,13 +312,10 @@ def generate_slots_automatic_bulk(
             raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
 
         time_pointer = start_time_obj
-
         while time_pointer < end_time_obj:
             next_time_pointer = time_pointer + timedelta(minutes=30)
-            
             if next_time_pointer > end_time_obj:
                 break
-
             new_slot = models.DoctorSlot(
                 doctor_id=entry.doctor_id,
                 date=entry.start_date, 
@@ -292,7 +325,6 @@ def generate_slots_automatic_bulk(
             )
             db.add(new_slot)
             slots_created_count += 1
-            
             time_pointer = next_time_pointer
 
     db.commit()
@@ -323,7 +355,6 @@ def delete_slot(id: int, db: Session = Depends(get_db), current_user=Depends(get
 # =========================================================
 # ---------------- APPOINTMENT APIs ---------------- #
 # =========================================================
-
 @app.post("/appointments/book")
 def book_appointment(payload: DirectBookRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "PATIENT":
@@ -346,7 +377,7 @@ def book_appointment(payload: DirectBookRequest, db: Session = Depends(get_db), 
         slot_id=slot.id,
         hospital_id=doctor.hospital_id,
         appointment_date=slot.date,
-        status="CONFIRMED"
+        status="SCHEDULED" 
     )
     
     db.add(new_app)
@@ -364,6 +395,9 @@ def reschedule_appointment(
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment record not found.")
 
+    if appointment.status in ["COMPLETED", "CANCELLED"]:
+        raise HTTPException(status_code=400, detail="Cannot reschedule a completed or cancelled appointment.")
+
     if current_user["role"] == "PATIENT":
         patient = db.query(models.Patient).filter_by(user_id=current_user["user_id"]).first()
         if not patient or appointment.patient_id != patient.id:
@@ -376,37 +410,91 @@ def reschedule_appointment(
     if new_slot.is_booked:
         raise HTTPException(status_code=400, detail="The selected alternative slot timing is already booked.")
 
-    # Reopen the previous time slot reference back to free inventory
     old_slot = db.query(models.DoctorSlot).filter(models.DoctorSlot.id == appointment.slot_id).first()
     if old_slot:
         old_slot.is_booked = False
 
-    # Lock and switch variables over to the newly selected slot
     new_slot.is_booked = True
     appointment.slot_id = payload.new_slot_id
     appointment.appointment_date = new_slot.date 
+    appointment.status = "SCHEDULED"
 
     db.commit()
     return {"status": "Success", "msg": "Reschedule action complete."}
 
-@app.delete("/appointments/cancel/{id}")
+@app.put("/appointments/cancel/{id}")
 def cancel_appointment(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     appt = db.query(models.Appointment).filter_by(id=id).first()
     if not appt:
         raise HTTPException(404, "Appointment not found")
 
+    if appt.status == "COMPLETED":
+        raise HTTPException(400, "You cannot cancel an appointment that has already been completed.")
+    if appt.status == "CANCELLED":
+        raise HTTPException(400, "This appointment is already cancelled.")
+
     slot = db.query(models.DoctorSlot).filter_by(id=appt.slot_id).first()
     if slot:
         slot.is_booked = False
     
-    db.delete(appt)
+    appt.status = "CANCELLED"
     db.commit()
+    
     return {"msg": "Appointment cancelled and slot reopened."}
+
+@app.put("/doctor/complete-appointment/{appointment_id}")
+def complete_appointment(appointment_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "DOCTOR":
+        raise HTTPException(403, "Only doctors can complete appointments")
+
+    appointment = db.query(models.Appointment).filter_by(id=appointment_id).first()
+    if not appointment:
+        raise HTTPException(404, "Appointment not found")
+
+    if appointment.status == "CANCELLED":
+        raise HTTPException(400, "Cannot complete an appointment that has been cancelled.")
+
+    appointment.status = "COMPLETED"
+    db.commit()
+    
+    return {"message": "Appointment successfully marked as completed."}
+
+# =========================================================
+# ---------------- DOCTOR CLINICAL CONTROLS ---------------- #
+# =========================================================
+@app.put("/doctor/appointment/{appointment_id}/status")
+def update_appointment_status(appointment_id: int, payload: StatusUpdateRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "DOCTOR":
+        raise HTTPException(403, "Only doctors can update live status")
+
+    appointment = db.query(models.Appointment).filter_by(id=appointment_id).first()
+    if not appointment:
+        raise HTTPException(404, "Appointment not found")
+
+    if appointment.status == "COMPLETED" and payload.status != "COMPLETED":
+        raise HTTPException(400, "Cannot change status of a completed appointment")
+
+    appointment.status = payload.status
+    db.commit()
+    return {"msg": f"Status updated to {payload.status}"}
+
+@app.put("/doctor/appointment/{appointment_id}/summary")
+def save_appointment_summary(appointment_id: int, payload: SummaryRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "DOCTOR":
+        raise HTTPException(403, "Only doctors can write summaries")
+
+    appointment = db.query(models.Appointment).filter_by(id=appointment_id).first()
+    if not appointment:
+        raise HTTPException(404, "Appointment not found")
+
+    appointment.appointment_summary = payload.summary
+    appointment.status = "COMPLETED" 
+    db.commit()
+    return {"msg": "Clinical summary saved and appointment completed."}
 
 # =========================================================
 # ---------------- SYSTEM VIEWS ---------------- #
 # =========================================================
-
 @app.get("/system-overview")
 def get_system_overview(db: Session = Depends(get_db)):
     return {
@@ -418,7 +506,7 @@ def get_system_overview(db: Session = Depends(get_db)):
                 "name": d.user.name, 
                 "specialization": d.specialization,
                 "years_of_experience": d.years_of_experience, 
-                "hospital_id": d.hospital_id,                 
+                "hospital_id": d.hospital_id,                
                 "department_id": d.department_id             
             } for d in db.query(models.Doctor).all()
         ]
@@ -427,7 +515,6 @@ def get_system_overview(db: Session = Depends(get_db)):
 # =========================================================
 # ---------------- DASHBOARDS ---------------- #
 # =========================================================
-
 @app.get("/doctor/my-schedule")
 def get_doctor_schedule(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "DOCTOR":
@@ -442,10 +529,12 @@ def get_doctor_schedule(db: Session = Depends(get_db), current_user=Depends(get_
     return [
         {
             "id": a.id,
+            "patient_id": a.patient_id, 
             "patient_name": a.patient.user.name if a.patient and a.patient.user else "Unknown Patient",
             "date": a.appointment_date,
             "time": f"{a.slot.start_time} - {a.slot.end_time}" if a.slot else "N/A",
-            "status": a.status
+            "status": a.status,
+            "summary": a.appointment_summary
         } for a in schedule
     ]
 
@@ -472,7 +561,226 @@ def get_patient_bookings_synchronized(db: Session = Depends(get_db), current_use
             "date": str(b.appointment_date),
             "start_time": b.slot.start_time if b.slot else "N/A",
             "end_time": b.slot.end_time if b.slot else "N/A",
-            "status": "CONFIRMED"
+            "status": b.status,
+            "summary": b.appointment_summary
         })
 
     return results
+
+# =========================================================
+# ---- HELPER: EXTRACT & EMBED PDF (AI DATA PIPELINE) ----
+# =========================================================
+def process_and_embed_pdf(file_bytes: bytes, patient_id: int):
+    reader = PdfReader(io.BytesIO(file_bytes))
+    full_text = ""
+    for page in reader.pages:
+        extracted = page.extract_text()
+        if extracted:
+            full_text += extracted + "\n"
+    
+    chunk_size = 1000
+    chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
+
+    for chunk in chunks:
+        if len(chunk.strip()) > 10:
+            embedding = genai.embed_content(
+                model=embed_model,
+                content=chunk,
+                task_type="retrieval_document"
+            )['embedding']
+            
+            supabase.table("patient_documents").insert({
+                "patient_id": patient_id,
+                "content": chunk,
+                "embedding": embedding
+            }).execute()
+
+# =========================================================
+# ---------------- PDF UPLOAD ROUTE ---------------- #
+# =========================================================
+
+# ── FIX: Now strictly requires an appointment_id to link the document! ──
+@app.post("/patient/upload-records")
+async def upload_medical_records(
+    appointment_id: str = Form(...),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db), 
+    current_user=Depends(get_current_user)
+):
+    if current_user["role"] != "PATIENT":
+        raise HTTPException(403, "Only patients can upload records")
+
+    try:
+        user = db.query(models.User).filter_by(id=current_user["user_id"]).first()
+        patient = db.query(models.Patient).filter_by(user_id=current_user["user_id"]).first()
+        
+        if not user or not patient:
+            raise HTTPException(404, "Profile not found")
+        
+        real_patient_id = patient.id 
+        uploaded_file_urls = []
+
+        for file in files:
+            file_bytes = await file.read()
+            unique_id = str(uuid.uuid4())
+            clean_filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.filename)
+            
+            # ── FIX: Embed the specific appointment ID right into the file name! ──
+            cloud_file_path = f"patient_{user.email}/appt_{appointment_id}_{unique_id}_{clean_filename}"
+            
+            supabase.storage.from_(BUCKET_NAME).upload(
+                path=cloud_file_path,
+                file=file_bytes,
+                file_options={
+                    "content-type": "application/pdf",
+                    "upsert": "true" 
+                }
+            )
+            
+            public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(cloud_file_path)
+            uploaded_file_urls.append(public_url)
+            process_and_embed_pdf(file_bytes, real_patient_id)
+
+        return {
+            "status": "success", 
+            "message": f"Successfully uploaded {len(files)} records.",
+            "urls": uploaded_file_urls
+        }
+
+    except Exception as e:
+        print(f"Upload Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload files to cloud storage.")
+    
+@app.get("/patient/my-documents")
+def get_patient_documents(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "PATIENT":
+        raise HTTPException(403, "Only patients can view their records")
+    
+    user = db.query(models.User).filter_by(id=current_user["user_id"]).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+        
+    folder_path = f"patient_{user.email}"
+    
+    try:
+        files = supabase.storage.from_(BUCKET_NAME).list(folder_path)
+        
+        results = []
+        for f in files:
+            if f['name'] == '.emptyFolderPlaceholder':
+                continue
+                
+            file_path = f"{folder_path}/{f['name']}"
+            public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path)
+            
+            # ── FIX: Clean the filename so it looks pretty for the user ──
+            # Removes the "appt_12_uuid_" part and just leaves "blood_test.pdf"
+            display_name = f['name']
+            display_name = re.sub(r'^appt_\d+_[a-f0-9\-]+_', '', display_name)
+
+            results.append({
+                "id": f.get('id', file_path),
+                "name": display_name,
+                "url": public_url,
+                "path": file_path
+            })
+            
+        return results
+    except Exception as e:
+        print(f"Storage List Error: {str(e)}")
+        return []
+    
+@app.delete("/patient/document")
+def delete_patient_document(file_path: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "PATIENT":
+        raise HTTPException(403, "Only patients can delete records")
+    
+    user = db.query(models.User).filter_by(id=current_user["user_id"]).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+        
+    if not file_path.startswith(f"patient_{user.email}/"):
+        raise HTTPException(403, "Unauthorized file access")
+
+    try:
+        supabase.storage.from_(BUCKET_NAME).remove([file_path])
+        return {"msg": "File deleted successfully"}
+    except Exception as e:
+        print(f"Delete Error: {str(e)}")
+        raise HTTPException(500, "Failed to delete file from cloud storage")
+
+# =========================================================
+# ---------------- AI RAG: CHATBOT LOGIC ---------------- #
+# =========================================================
+
+@app.post("/doctor/chat")
+def doctor_ai_chat(payload: ChatRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.get("role") != "DOCTOR":
+        raise HTTPException(403, "Only doctors can access the AI Assistant")
+
+    try:
+        patient = db.query(models.Patient).filter_by(id=payload.patient_id).first()
+        if not patient:
+            return {"answer": "I apologize, but I cannot locate this patient's database record."}
+
+        db_context = f"Patient Name: {patient.user.name}\n"
+        db_context += f"Age: {patient.age}, Gender: {patient.gender}, Blood Group: {patient.blood_group}\n\n"
+        
+        appointments = db.query(models.Appointment).filter_by(patient_id=payload.patient_id).all()
+        db_context += "Appointment History:\n"
+        if not appointments:
+            db_context += "No previous appointments on record.\n"
+        else:
+            for appt in appointments:
+                doc_name = appt.doctor.user.name if appt.doctor and appt.doctor.user else "Unknown"
+                summary_note = appt.appointment_summary or "No notes recorded"
+                
+                time_window = f"{appt.slot.start_time} to {appt.slot.end_time}" if appt.slot else "Unknown Time"
+                
+                db_context += f"- Date: {appt.appointment_date} | Time: {time_window} | Status: {appt.status} | Seen by: Dr. {doc_name} | Doctor Notes: {summary_note}\n"
+
+        question_embedding = genai.embed_content(
+            model=embed_model,
+            content=payload.question,
+            task_type="retrieval_query"
+        )['embedding']
+
+        search_results = supabase.rpc("match_documents", {
+            "query_embedding": question_embedding,
+            "match_threshold": 0.2, 
+            "match_count": 5,       
+            "p_id": payload.patient_id
+        }).execute()
+        
+        pdf_context = "No uploaded medical PDFs found."
+        if search_results.data:
+            pdf_context = "\n\n".join([item["content"] for item in search_results.data])
+
+        doc_name_clean = payload.doctor_name
+
+        prompt = f"""
+        You are an intelligent, exceptionally polite, and friendly medical AI assistant.
+        
+        CRITICAL RULES:
+        1. Always maintain a warm, respectful, and highly polite tone.
+        2. GREETING RULE: IF AND ONLY IF the doctor says a simple greeting (like "hi", "hello", "hey"), you MUST reply EXACTLY with: "Hello {doc_name_clean}! How may I assist you today?"
+        3. DIRECT ANSWER RULE: If the doctor asks a specific question, DO NOT use any greetings. Skip the "Hello" entirely and just answer the question directly.
+        4. Answer the doctor's questions using ONLY the Database Context and Document Context provided. 
+        5. If a medical question cannot be answered using the provided contexts, politely apologize.
+        6. IGNORE NAME MISMATCHES: Because this is a testing environment, assume ALL provided documents belong to the patient {patient.user.name}.
+
+        --- DATABASE PROFILE & APPOINTMENTS ---
+        {db_context}
+        
+        --- UPLOADED MEDICAL DOCUMENTS ---
+        {pdf_context}
+        
+        Doctor's Input: {payload.question}
+        """
+
+        response = chat_model.generate_content(prompt)
+        return {"answer": response.text}
+        
+    except Exception as e:
+        print(f"AI Chat Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="The AI Assistant encountered an error.")

@@ -1,0 +1,16 @@
+# Passwords and Secrets
+.env
+
+# Python Cache (Junk files Python creates automatically)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments (Massive folder, do not upload!)
+venv/
+env/
+.venv/
+
+# Database files (If you are using a local SQLite file for testing)
+*.db
+*.sqlite3

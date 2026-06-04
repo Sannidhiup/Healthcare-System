@@ -25,12 +25,16 @@ function Login() {
       // 1. Securely cache the system token
       localStorage.setItem('token', res.data.access_token);
 
-      // 2. Grab name and role parameters directly from your updated backend response
+      // 2. Grab parameters directly from your updated backend response
       const userRole = res.data.role; 
       const userName = res.data.name;
+      const userExtraInfo = res.data.extra_info || ""; // Catches the Dept/Hospital for Doctors!
 
-      // 3. Store name in memory so the background dashboard components can read it
+      // 3. Store data in memory so the Navbar and dashboards can read it
       localStorage.setItem('userName', userName);
+      localStorage.setItem('userRole', userRole); // Important for Navbar logic!
+      localStorage.setItem('userExtraInfo', userExtraInfo); // Important for Doctor titles!
+      
       sessionStorage.removeItem('hasGreeted'); // Wipe old greeting session flags
 
       // 4. Trigger the exact custom popup confirmation layout string requested
@@ -108,7 +112,7 @@ function Login() {
           />
 
           <label style={labelStyle}>Password</label>
-          {/* NEW: Custom relative wrapper for the password eye icon */}
+          {/* Custom relative wrapper for the password eye icon */}
           <div style={{ position: 'relative' }}>
             <input 
               type={showPassword ? "text" : "password"} 

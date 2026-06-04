@@ -63,8 +63,9 @@ class Doctor(Base):
     user = relationship("User", back_populates="doctor_profile")
     slots = relationship("DoctorSlot", back_populates="doctor", cascade="all, delete-orphan")
     
-    # ✅ ADD THIS LINE BELOW
+    # ✅ Link doctor directly to their hospital
     hospital = relationship("Hospital")
+
 # ==========================================
 # 5. DOCTOR SLOTS (The Manual Inventory)
 # ==========================================
@@ -82,7 +83,7 @@ class DoctorSlot(Base):
     appointment = relationship("Appointment", back_populates="slot", uselist=False, cascade="all, delete-orphan")
 
 # ==========================================
-# 6. APPOINTMENT (The Link)
+# 6. APPOINTMENT (The Link & Clinical Notes)
 # ==========================================
 class Appointment(Base):
     __tablename__ = "appointments"
@@ -92,12 +93,17 @@ class Appointment(Base):
     slot_id = Column(Integer, ForeignKey("doctor_slots.id")) 
     hospital_id = Column(Integer, ForeignKey("hospitals.id"))
     
-    # ✅ This will now store the actual date of the visit
+    # Stores the actual date of the visit
     appointment_date = Column(Date) 
     
     # This default lambda handles the +5:30 offset for IST
     booked_at = Column(DateTime, default=lambda: datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30))
-    status = Column(String, default="BOOKED")
+    
+    status = Column(String, default="SCHEDULED") 
+
+    # ── NEW: PERMANENT STORAGE FOR DOCTOR'S CLINICAL SUMMARY ──
+    appointment_summary = Column(String, nullable=True)
 
     patient = relationship("Patient", back_populates="appointments")
     slot = relationship("DoctorSlot", back_populates="appointment")
+    doctor = relationship("Doctor")

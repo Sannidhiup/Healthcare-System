@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
 
-// ── THE MAGIC VARIABLE ──
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
 
 function PatientDashboard() {
@@ -24,9 +23,13 @@ function PatientDashboard() {
   const [filterDate, setFilterDate] = useState('');
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
   
-  // ── NEW AI FEATURE STATES ──
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadAppointmentId, setUploadAppointmentId] = useState(''); 
   const [isUploading, setIsUploading] = useState(false);
+  const [myRecords, setMyRecords] = useState([]); 
+
+  const today = new Date();
+  const minDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const loadInitialPatientWorkspace = useCallback(async () => {
     try {
@@ -34,7 +37,12 @@ function PatientDashboard() {
       setHospitals(overviewRes.data.hospitals || []);
       setDoctors(overviewRes.data.doctors || []);
       const appointmentsRes = await axios.get(`${API_BASE_URL}/patient/appointments`, { headers: { Authorization: `Bearer ${token}` } });
-      setMyAppointments(appointmentsRes.data || []);
+      
+      const sortedAppts = appointmentsRes.data.sort((a, b) => new Date(`${b.date}T${b.start_time || '00:00'}`) - new Date(`${a.date}T${a.start_time || '00:00'}`));
+      setMyAppointments(sortedAppts);
+
+      const recordsRes = await axios.get(`${API_BASE_URL}/patient/my-documents`, { headers: { Authorization: `Bearer ${token}` } });
+      setMyRecords(recordsRes.data || []);
     } catch (err) { console.error("Error setting up patient environment maps."); }
   }, [token]);
 
@@ -55,32 +63,44 @@ function PatientDashboard() {
     try {
       const res = await axios.get(`${API_BASE_URL}/slots/${selectedDoctor}?date=${filterDate}`);
       const now = new Date();
-      const year = now.getFullYear(); const month = String(now.getMonth() + 1).padStart(2, '0'); const day = String(now.getDate()).padStart(2, '0');
-      const todayString = `${year}-${month}-${day}`;
+      const todayString = minDateString;
       const currentTimeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      
       const validLiveSlots = res.data.filter(slot => {
         if (slot.is_booked) return false;
-        if (filterDate === todayString) return slot.start_time > currentTimeString;
+        if (filterDate < todayString) return false; 
+        if (filterDate === todayString) return slot.start_time > currentTimeString; 
         return true;
       });
+      
       setAvailableSlots(validLiveSlots);
-      if (validLiveSlots.length === 0) showStatusNotification("No open appointment timings remaining for this date configuration.", false);
+      if (validLiveSlots.length === 0) showStatusNotification("No open appointment timings remaining for this date.", false);
     } catch { showStatusNotification("Failed to collect clinician schedule timelines.", true); }
   };
 
   const handleBookSlotClick = (slot) => setActionModal({ show: true, type: 'BOOK', targetId: slot.id, message: `Confirm booking appointment window from ${slot.start_time} to ${slot.end_time}?` });
 
-  const handleCancelClick = (appt) => setActionModal({ show: true, type: 'CANCEL', targetId: appt.id, message: `Are you sure you want to drop your appointment with Dr. ${appt.doctor_name}? This slot will return to open public inventory.` });
+  const handleCancelClick = (appt) => setActionModal({ show: true, type: 'CANCEL', targetId: appt.id, message: `Are you sure you want to drop your appointment with Dr. ${appt.doctor_name}?` });
+
+  const handleDeleteFileClick = (record) => {
+    const filePath = record.path || record.id;
+    if (!filePath) {
+      showStatusNotification("Error: File path missing. Please refresh the page.", true);
+      return;
+    }
+    setActionModal({ show: true, type: 'DELETE_FILE', targetId: filePath, message: `Are you sure you want to permanently delete "${record.name}"?` });
+  };
 
   const handleRescheduleClick = async (appt) => {
     try {
       const res = await axios.get(`${API_BASE_URL}/slots/${appt.doctor_id}?date=${appt.date}`);
       const now = new Date();
-      const year = now.getFullYear(); const month = String(now.getMonth() + 1).padStart(2, '0'); const day = String(now.getDate()).padStart(2, '0');
-      const todayString = `${year}-${month}-${day}`;
+      const todayString = minDateString;
       const currentTimeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      
       const freeSlots = res.data.filter(slot => {
         if (slot.is_booked) return false;
+        if (appt.date < todayString) return false; 
         if (appt.date === todayString) return slot.start_time > currentTimeString;
         return true;
       });
@@ -93,38 +113,51 @@ function PatientDashboard() {
     const { type, targetId, extraData } = actionModal;
     setActionModal({ show: false, type: '', targetId: null, message: '', extraData: null });
     try {
-      if (type === 'BOOK') { await axios.post(`${API_BASE_URL}/appointments/book`, { slot_id: targetId }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Appointment confirmed successfully."); }
-      else if (type === 'CANCEL') { await axios.delete(`${API_BASE_URL}/appointments/cancel/${targetId}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Appointment canceled cleanly."); }
+      if (type === 'BOOK') { 
+        await axios.post(`${API_BASE_URL}/appointments/book`, { slot_id: targetId }, { headers: { Authorization: `Bearer ${token}` } }); 
+        showStatusNotification("Appointment confirmed successfully."); 
+      }
+      else if (type === 'CANCEL') { 
+        await axios.put(`${API_BASE_URL}/appointments/cancel/${targetId}`, {}, { headers: { Authorization: `Bearer ${token}` } }); 
+        showStatusNotification("Appointment canceled cleanly."); 
+      }
       else if (type === 'RESCHEDULE') {
         if (!extraData) { showStatusNotification("Rescheduling aborted: No new slot timing was selected.", true); return; }
         await axios.put(`${API_BASE_URL}/appointments/reschedule/${targetId}`, { new_slot_id: parseInt(extraData) }, { headers: { Authorization: `Bearer ${token}` } });
         showStatusNotification("Appointment schedule successfully modified.");
       }
+      else if (type === 'DELETE_FILE') {
+        await axios.delete(`${API_BASE_URL}/patient/document?file_path=${encodeURIComponent(targetId)}`, { headers: { Authorization: `Bearer ${token}` } });
+        showStatusNotification("File permanently deleted from storage.");
+      }
       loadInitialPatientWorkspace();
       if (selectedDoctor && filterDate) handleFetchAvailableSlots();
-    } catch { showStatusNotification("Oops! We couldn't complete this request. Please try again.", true); }
+    } catch (err) { 
+      const exactError = err.response?.data?.detail || "Could not connect to the server.";
+      showStatusNotification(`Error: ${exactError}`, true); 
+    }
   };
 
-  // ── NEW: FILE UPLOAD HANDLER ──
   const handleUploadRecords = async () => {
+    if (!uploadAppointmentId) { showStatusNotification("Please select an appointment from the dropdown first.", true); return; }
     if (uploadedFiles.length === 0) return;
+    
     setIsUploading(true);
     
-    // Create the multipart form envelope
     const formData = new FormData();
+    formData.append("appointment_id", uploadAppointmentId); 
     uploadedFiles.forEach(file => formData.append("files", file));
 
     try {
-      // Send to the FastAPI backend (we will build this endpoint next!)
       await axios.post(`${API_BASE_URL}/patient/upload-records`, formData, {
-        headers: { Authorization: `Bearer ${token}` } // Axios automatically sets multipart headers for FormData
+        headers: { Authorization: `Bearer ${token}` } 
       });
-      
-      showStatusNotification("Medical records securely uploaded to cloud storage!");
-      setUploadedFiles([]); // Clear out the input after success
+      showStatusNotification("Medical records attached to your appointment and saved!");
+      setUploadedFiles([]); 
+      setUploadAppointmentId(''); 
+      await loadInitialPatientWorkspace(); 
     } catch (error) {
       showStatusNotification("Failed to upload records to the server.", true);
-      console.error(error);
     } finally {
       setIsUploading(false);
     }
@@ -147,9 +180,9 @@ function PatientDashboard() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: 'white', borderRadius: 20, padding: '36px 40px', width: 420, boxShadow: '0 25px 60px rgba(0,0,0,0.20)', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', fontSize: 26 }}>
-              {actionModal.type === 'CANCEL' ? '🚫' : actionModal.type === 'RESCHEDULE' ? '🔄' : '📅'}
+              {actionModal.type === 'CANCEL' ? '🚫' : actionModal.type === 'RESCHEDULE' ? '🔄' : actionModal.type === 'DELETE_FILE' ? '🗑️' : '📅'}
             </div>
-            <h3 style={{ margin: '0 0 10px', color: '#111827', fontSize: 18, fontWeight: 700 }}>Confirm Appointment</h3>
+            <h3 style={{ margin: '0 0 10px', color: '#111827', fontSize: 18, fontWeight: 700 }}>Confirm Action</h3>
             <p style={{ margin: '0 0 22px', color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>{actionModal.message}</p>
 
             {actionModal.type === 'RESCHEDULE' && (
@@ -170,8 +203,8 @@ function PatientDashboard() {
                 Cancel
               </button>
               <button onClick={executeConfirmedAction}
-                style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #1e3a5f, #2563eb)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14, boxShadow: '0 4px 12px rgba(37,99,235,0.3)' }}>
-                Save
+                style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: actionModal.type === 'DELETE_FILE' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1e3a5f, #2563eb)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                {actionModal.type === 'DELETE_FILE' ? 'Delete' : 'Save'}
               </button>
             </div>
           </div>
@@ -205,13 +238,23 @@ function PatientDashboard() {
                 <label style={P.label}>Select Specializing Practitioner</label>
                 <select value={selectedDoctor} onChange={e => { setSelectedDoctor(e.target.value); setAvailableSlots([]); }} style={{ ...P.sel, opacity: !selectedHospital ? 0.6 : 1 }} disabled={!selectedHospital}>
                   <option value="">-- Choose Practitioner --</option>
-                  {validFilteredDoctorsList.map(d => <option key={d.id} value={d.id}>Dr. {d.name} ({d.specialization})</option>)}
+                  {validFilteredDoctorsList.map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name.startsWith('Dr') ? d.name : `Dr. ${d.name}`} ({d.specialization})
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div style={P.field}>
                 <label style={P.label}>Target Consultation Date</label>
-                <input type="date" value={filterDate} onChange={e => { setFilterDate(e.target.value); setAvailableSlots([]); }} style={P.inp} />
+                <input 
+                  type="date" 
+                  min={minDateString} 
+                  value={filterDate} 
+                  onChange={e => { setFilterDate(e.target.value); setAvailableSlots([]); }} 
+                  style={P.inp} 
+                />
               </div>
 
               <button onClick={handleFetchAvailableSlots} style={P.searchBtn}>🔍 Search Slots</button>
@@ -240,32 +283,36 @@ function PatientDashboard() {
             <div style={{...P.cardTop, background: '#f0fdf4', borderBottom: '1px solid #dcfce3'}}>
               <span style={{ fontSize: 22 }}>📁</span>
               <div>
-                <div style={P.cardTitle}>Upload Medical Records</div>
-                <div style={P.cardSub}>Securely save PDFs for your doctors</div>
+                <div style={P.cardTitle}>Attach Medical Records</div>
+                <div style={P.cardSub}>Securely save PDFs for an appointment</div>
               </div>
             </div>
             <div style={P.cardBody}>
+              
+              {/* ── FIX: Added Time Window to Dropdown ── */}
               <div style={P.field}>
-                <label style={P.label}>Select Lab Reports or Summaries (PDF)</label>
-                <input 
-                  type="file" 
-                  accept=".pdf" 
-                  multiple 
-                  onChange={(e) => setUploadedFiles(Array.from(e.target.files))} 
-                  style={{...P.inp, background: 'white'}}
-                />
+                <label style={P.label}>1. Select Upcoming Appointment</label>
+                <select value={uploadAppointmentId} onChange={e => setUploadAppointmentId(e.target.value)} style={P.sel}>
+                  <option value="">-- Choose Appointment --</option>
+                  {myAppointments.map(appt => (
+                    <option key={appt.id} value={appt.id}>
+                      {appt.date} ({appt.start_time} - {appt.end_time}) - Dr. {appt.doctor_name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button 
-                onClick={handleUploadRecords} 
-                disabled={isUploading || uploadedFiles.length === 0}
+
+              <div style={P.field}>
+                <label style={P.label}>2. Select Lab Reports (PDF)</label>
+                <input type="file" accept=".pdf" multiple onChange={(e) => setUploadedFiles(Array.from(e.target.files))} style={{...P.inp, background: 'white'}} />
+              </div>
+
+              <button onClick={handleUploadRecords} disabled={isUploading || uploadedFiles.length === 0}
                 style={{ 
-                  ...P.searchBtn, 
-                  background: isUploading || uploadedFiles.length === 0 ? '#d1d5db' : 'linear-gradient(135deg, #10b981, #059669)', 
-                  boxShadow: isUploading || uploadedFiles.length === 0 ? 'none' : '0 4px 14px rgba(16,185,129,0.3)',
-                  cursor: isUploading || uploadedFiles.length === 0 ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {isUploading ? '⏳ Uploading to Cloud...' : '☁️ Upload Files'}
+                  ...P.searchBtn, background: isUploading || uploadedFiles.length === 0 ? '#d1d5db' : 'linear-gradient(135deg, #10b981, #059669)', 
+                  boxShadow: isUploading || uploadedFiles.length === 0 ? 'none' : '0 4px 14px rgba(16,185,129,0.3)', cursor: isUploading || uploadedFiles.length === 0 ? 'not-allowed' : 'pointer'
+                }}>
+                {isUploading ? '⏳ Uploading...' : '☁️ Attach Files to Appointment'}
               </button>
             </div>
           </div>
@@ -290,37 +337,88 @@ function PatientDashboard() {
             ) : (
               <table style={P.table}>
                 <thead>
-                  <tr style={{ background: '#f9fafb' }}>
-                    {['Medical Officer', 'Date Scheduled', 'Time Window', 'Status', 'Actions Control'].map(h => <th key={h} style={P.th}>{h}</th>)}
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['Medical Officer', 'Date Scheduled', 'Time Window', 'Live Status', 'Actions Control', 'Saved Records'].map(h => <th key={h} style={P.th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {myAppointments.map(appt => (
-                    <tr key={appt.id} style={{ borderBottom: '1px solid #f3f4f6' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                      <td style={P.td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                            {appt.doctor_name.slice(0, 2).toUpperCase()}
+                  {myAppointments.map(appt => {
+                    const endTime = appt.end_time && appt.end_time !== 'N/A' ? appt.end_time : '23:59';
+                    const appointmentEndTime = new Date(`${appt.date}T${endTime}:00`);
+                    const currentTime = new Date();
+                    const isTimePassed = currentTime > appointmentEndTime;
+
+                    const dbStatus = appt.status; 
+                    let displayStatus = dbStatus;
+                    if (dbStatus === 'SCHEDULED') displayStatus = 'CONFIRMED'; 
+
+                    let statusColor = { bg: '#eff6ff', text: '#1d4ed8', dot: '#3b82f6', border: '#bfdbfe' }; 
+                    if (dbStatus === 'ARRIVED') statusColor = { bg: '#fef3c7', text: '#d97706', dot: '#f59e0b', border: '#fde68a' }; 
+                    if (dbStatus === 'STARTED') statusColor = { bg: '#fffbeb', text: '#b45309', dot: '#f59e0b', border: '#fde68a' }; 
+                    if (dbStatus === 'COMPLETED') statusColor = { bg: '#f0fdf4', text: '#15803d', dot: '#22c55e', border: '#bbf7d0' }; 
+                    if (dbStatus === 'CANCELLED') statusColor = { bg: '#fef2f2', text: '#b91c1c', dot: '#ef4444', border: '#fecaca' }; 
+
+                    const canEdit = !isTimePassed && dbStatus === 'SCHEDULED';
+
+                    const thisAppointmentRecords = myRecords.filter(record => record.path.includes(`appt_${appt.id}_`));
+
+                    return (
+                      <tr key={appt.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                        
+                        <td style={P.td}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                              {appt.doctor_name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <span style={{ fontWeight: 700, color: '#1e293b' }}>{appt.doctor_name}</span>
                           </div>
-                          <span style={{ fontWeight: 700, color: '#111827' }}>{appt.doctor_name}</span>
-                        </div>
-                      </td>
-                      <td style={{ ...P.td, color: '#6b7280', fontSize: 13 }}>{appt.date}</td>
-                      <td style={P.td}><span style={{ background: '#f3f4f6', color: '#374151', padding: '5px 11px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>{appt.start_time} – {appt.end_time}</span></td>
-                      <td style={P.td}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: appt.status === 'CONFIRMED' ? '#16a34a' : '#6b7280', background: appt.status === 'CONFIRMED' ? '#f0fdf4' : '#f3f4f6', border: `1px solid ${appt.status === 'CONFIRMED' ? '#bbf7d0' : '#e5e7eb'}`, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: appt.status === 'CONFIRMED' ? '#16a34a' : '#9ca3af', display: 'inline-block' }} />
-                          {appt.status}
-                        </span>
-                      </td>
-                      <td style={P.td}>
-                        <button onClick={() => handleRescheduleClick(appt)} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '6px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginRight: 6 }}>Reschedule</button>
-                        <button onClick={() => handleCancelClick(appt)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '6px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td style={{ ...P.td, color: '#64748b', fontSize: 13, fontWeight: 500 }}>{appt.date}</td>
+                        <td style={P.td}><span style={{ background: '#f1f5f9', color: '#475569', padding: '5px 11px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>{appt.start_time} – {appt.end_time}</span></td>
+                        
+                        <td style={P.td}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: statusColor.text, background: statusColor.bg, border: `1px solid ${statusColor.border}`, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor.dot, display: 'inline-block' }} />
+                            {displayStatus}
+                          </span>
+                        </td>
+                        
+                        <td style={P.td}>
+                          {canEdit ? (
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={() => handleRescheduleClick(appt)} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '6px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Reschedule</button>
+                              <button onClick={() => handleCancelClick(appt)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '6px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, paddingLeft: 8 }}>
+                              {dbStatus === 'COMPLETED' ? '✓ Finished' : dbStatus === 'CANCELLED' ? '🚫 Void' : '🔒 Locked'}
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={P.td}>
+                          {thisAppointmentRecords.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {thisAppointmentRecords.map(record => (
+                                <div key={record.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#eff6ff', padding: '3px 6px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                                  <a href={record.url} target="_blank" rel="noopener noreferrer" 
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: '#1d4ed8', fontSize: '11px', fontWeight: 700 }}>
+                                    <span style={{ fontSize: '13px' }}>📄</span>
+                                    <span style={{ maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{record.name}</span>
+                                  </a>
+                                  <button onClick={() => handleDeleteFileClick(record)} title="Delete File" style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', marginLeft: '2px', padding: '0 4px' }}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: '#cbd5e1', fontSize: '12px', fontWeight: 600, paddingLeft: '8px' }}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -332,19 +430,19 @@ function PatientDashboard() {
 }
 
 const P = {
-  card: { background: 'white', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', border: '1px solid #f3f4f6', overflow: 'hidden' },
-  cardTop: { background: '#eff6ff', padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #dbeafe' },
-  cardTitle: { fontSize: 15, fontWeight: 700, color: '#111827' },
-  cardSub: { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  cardBody: { padding: '22px' },
+  card: { background: 'white', borderRadius: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', overflow: 'hidden' },
+  cardTop: { background: '#f8fafc', padding: '18px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #e2e8f0' },
+  cardTitle: { fontSize: 16, fontWeight: 700, color: '#0f172a' },
+  cardSub: { fontSize: 13, color: '#64748b', marginTop: 2 },
+  cardBody: { padding: '24px' },
   field: { marginBottom: 16 },
-  label: { fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 },
-  inp: { width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, color: '#111827', boxSizing: 'border-box', background: '#fafafa', outline: 'none' },
-  sel: { width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, color: '#111827', boxSizing: 'border-box', background: '#fafafa', outline: 'none' },
-  searchBtn: { width: '100%', padding: '13px', background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', color: 'white', border: 'none', borderRadius: '10px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', marginTop: 4 },
+  label: { fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 },
+  inp: { width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, color: '#1e293b', boxSizing: 'border-box', background: 'white', outline: 'none' },
+  sel: { width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, color: '#1e293b', boxSizing: 'border-box', background: 'white', outline: 'none' },
+  searchBtn: { width: '100%', padding: '12px', background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', color: 'white', border: 'none', borderRadius: '8px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(37,99,235,0.2)', marginTop: 4 },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '10px 14px', borderBottom: '1px solid #f3f4f6' },
-  td: { padding: '13px 14px', verticalAlign: 'middle' },
+  th: { textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '14px', borderBottom: '1px solid #e2e8f0' },
+  td: { padding: '14px', verticalAlign: 'middle' },
 };
 
 export default PatientDashboard;
