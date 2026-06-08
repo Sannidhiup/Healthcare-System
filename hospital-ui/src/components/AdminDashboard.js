@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
 
-// ── THE MAGIC VARIABLE ──
-// Vercel will use the first one, your laptop will use the second one!
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
 
 function AdminDashboard() {
@@ -141,41 +139,117 @@ function AdminDashboard() {
     } catch { showStatusNotification("Personnel sync validation rejected.", true); }
   };
 
+  /* ─── DEPT COLOR HELPER ─── */
+  const deptStyle = (name) => {
+    const map = {
+      Cardiology:  { bg: '#FEF2F2', color: '#DC2626', border: '#FECACA' },
+      Radiology:   { bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE' },
+      Neurology:   { bg: '#F5F3FF', color: '#7C3AED', border: '#DDD6FE' },
+      Orthopedics: { bg: '#F0FDF4', color: '#059669', border: '#A7F3D0' },
+    };
+    return map[name] || { bg: '#F1F5F9', color: '#475569', border: '#CBD5E1' };
+  };
+
+  /* ─── DOCTOR AVATAR COLOR ─── */
+  const avatarGradients = [
+    'linear-gradient(135deg,#4F46E5,#7C3AED)',
+    'linear-gradient(135deg,#0D9488,#14B8A6)',
+    'linear-gradient(135deg,#D97706,#F59E0B)',
+    'linear-gradient(135deg,#DC2626,#EF4444)',
+    'linear-gradient(135deg,#2563EB,#3B82F6)',
+  ];
+  const avatarGrad = (id) => avatarGradients[(id - 1) % avatarGradients.length];
+
   return (
-    <div style={{ backgroundColor: '#f0f2f5', minHeight: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+    <div style={{ backgroundColor: '#F0F4FF', minHeight: '100vh', fontFamily: "'Outfit', 'Segoe UI', sans-serif" }}>
+
+      {/* ── GOOGLE FONTS + TABLER ICONS (injected once) ── */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+        @import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css');
+
+        * { box-sizing: border-box; }
+
+        input[type="text"]:focus, input[type="email"]:focus,
+        input[type="password"]:focus, input[type="number"]:focus,
+        input[type="tel"]:focus, input[type="date"]:focus,
+        input[type="time"]:focus, textarea:focus {
+          border-color: #3B82F6 !important;
+          background: #fff !important;
+          outline: none;
+        }
+
+        .cc-tab-btn { transition: all 0.15s; }
+        .cc-tab-btn:hover { color: #111827 !important; }
+
+        .cc-tr:hover td { background: #F5F8FF !important; }
+
+        .cc-add-row:hover { background: #EFF6FF !important; }
+
+        .cc-btn-edit:hover  { background: #DBEAFE !important; }
+        .cc-btn-del:hover   { background: #FEE2E2 !important; }
+        .cc-btn-save:hover  { opacity: 0.92; transform: translateY(-1px); }
+        .cc-btn-teal:hover  { opacity: 0.92; transform: translateY(-1px); }
+
+        .cc-dr-drop div:hover { background: #F0F7FF !important; }
+
+        @keyframes ccSlideIn {
+          from { opacity:0; transform:translateY(-8px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+        .cc-toast { animation: ccSlideIn 0.3s ease; }
+        .cc-panel { animation: ccSlideIn 0.2s ease; }
+      `}</style>
+
       <Navbar />
 
-      {/* ── NOTIFICATION TOAST ── */}
+      {/* ── TOAST NOTIFICATION ── */}
       {notification.show && (
-        <div style={{
-          position: 'fixed', top: 76, right: 24, zIndex: 9999,
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '13px 20px', borderRadius: 12, fontSize: 13, fontWeight: 600,
-          boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
-          backgroundColor: notification.isError ? '#fff1f1' : '#f0fdf4',
-          color: notification.isError ? '#c0392b' : '#166534',
-          border: `1.5px solid ${notification.isError ? '#fca5a5' : '#86efac'}`,
-          maxWidth: 420, animation: 'slideIn 0.3s ease',
+        <div className="cc-toast" style={{
+          position:'fixed', top:72, right:24, zIndex:9999,
+          display:'flex', alignItems:'center', gap:10,
+          padding:'12px 18px', borderRadius:12, fontSize:13, fontWeight:600,
+          boxShadow:'0 8px 30px rgba(0,0,0,0.12)',
+          backgroundColor: notification.isError ? '#FFF1F1' : '#F0FDF4',
+          color: notification.isError ? '#B91C1C' : '#166534',
+          border:`1.5px solid ${notification.isError ? '#FECACA' : '#86EFAC'}`,
+          maxWidth:420,
         }}>
-          <span style={{ fontSize: 18 }}>{notification.isError ? '⚠️' : '✅'}</span>
+          <i className={`ti ${notification.isError ? 'ti-alert-triangle' : 'ti-circle-check'}`}
+             style={{fontSize:18}} />
           {notification.message}
         </div>
       )}
 
       {/* ── DELETE MODAL ── */}
       {deleteModal.show && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999, backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: 'white', borderRadius: 20, padding: '36px 40px', width: 380, boxShadow: '0 25px 60px rgba(0,0,0,0.20)', textAlign: 'center' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff1f1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', fontSize: 26 }}>🗑️</div>
-            <h3 style={{ margin: '0 0 10px', color: '#111827', fontSize: 18, fontWeight: 700 }}>Confirm Deletion</h3>
-            <p style={{ margin: '0 0 28px', color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>{deleteModal.message}</p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => setDeleteModal({ show: false, type: '', id: null, message: '' })}
-                style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+        <div style={{
+          position:'fixed', inset:0, backgroundColor:'rgba(11,29,58,0.55)',
+          display:'flex', justifyContent:'center', alignItems:'center',
+          zIndex:99999, backdropFilter:'blur(4px)',
+        }}>
+          <div style={{
+            background:'white', borderRadius:20, padding:'36px 40px',
+            width:380, boxShadow:'0 25px 60px rgba(0,0,0,0.18)', textAlign:'center',
+          }}>
+            <div style={{
+              width:56, height:56, borderRadius:'50%', background:'#FEF2F2',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              margin:'0 auto 18px',
+            }}>
+              <i className="ti ti-trash" style={{fontSize:26, color:'#EF4444'}} />
+            </div>
+            <h3 style={{margin:'0 0 10px', color:'#0B1D3A', fontSize:18, fontWeight:700}}>Confirm Deletion</h3>
+            <p style={{margin:'0 0 28px', color:'#6B7280', fontSize:14, lineHeight:1.6}}>{deleteModal.message}</p>
+            <div style={{display:'flex', gap:12}}>
+              <button
+                onClick={() => setDeleteModal({ show:false, type:'', id:null, message:'' })}
+                style={{flex:1, padding:'11px', borderRadius:10, border:'1.5px solid #E5E7EB', background:'white', color:'#374151', fontWeight:600, cursor:'pointer', fontSize:14, fontFamily:'inherit'}}>
                 Cancel
               </button>
-              <button onClick={executeConfirmedDelete}
-                style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+              <button
+                onClick={executeConfirmedDelete}
+                style={{flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#EF4444,#DC2626)', color:'white', fontWeight:700, cursor:'pointer', fontSize:14, fontFamily:'inherit'}}>
                 Yes, Delete
               </button>
             </div>
@@ -184,173 +258,268 @@ function AdminDashboard() {
       )}
 
       {/* ── TAB BAR ── */}
-      <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '0 28px', display: 'flex', gap: 2, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+      <div style={{
+        background:'white', borderBottom:'1px solid #DDE4F0',
+        padding:'0 28px', display:'flex', gap:2,
+        boxShadow:'0 1px 6px rgba(11,29,58,0.06)',
+        position:'sticky', top:0, zIndex:90,
+      }}>
         {[
-          { key: 'slots',       emoji: '📅', label: 'Doctor Slot Entries' },
-          { key: 'hospitals',   emoji: '🏢', label: 'Hospitals Onboarding' },
-          { key: 'departments', emoji: '🗂️', label: 'Departments Onboarding' },
-          { key: 'doctors',     emoji: '🩺', label: 'Doctors Directory' },
+          { key:'slots',       icon:'ti-calendar-time',     label:'Doctor Slot Entries',     accent:'#3B82F6' },
+          { key:'hospitals',   icon:'ti-building-hospital', label:'Hospitals Onboarding',    accent:'#10B981' },
+          { key:'departments', icon:'ti-folders',           label:'Departments Onboarding',  accent:'#F59E0B' },
+          { key:'doctors',     icon:'ti-stethoscope',       label:'Doctors Directory',       accent:'#8B5CF6' },
         ].map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
-            padding: '14px 18px', fontSize: 13.5, background: 'none', border: 'none',
-            borderBottom: activeTab === t.key ? '2.5px solid #2563eb' : '2.5px solid transparent',
-            color: activeTab === t.key ? '#2563eb' : '#6b7280',
-            fontWeight: activeTab === t.key ? 700 : 500,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-            transition: 'all 0.15s', whiteSpace: 'nowrap',
-          }}>
-            <span>{t.emoji}</span> {t.label}
+          <button key={t.key} className="cc-tab-btn"
+            onClick={() => setActiveTab(t.key)}
+            style={{
+              padding:'14px 18px', fontSize:13, background:'none', border:'none',
+              borderBottom: activeTab === t.key ? `2.5px solid ${t.accent}` : '2.5px solid transparent',
+              color: activeTab === t.key ? t.accent : '#6B7280',
+              fontWeight: activeTab === t.key ? 700 : 500,
+              cursor:'pointer', display:'flex', alignItems:'center', gap:7,
+              whiteSpace:'nowrap', fontFamily:'inherit',
+            }}>
+            <span style={{
+              width:22, height:22, borderRadius:6, display:'flex',
+              alignItems:'center', justifyContent:'center', fontSize:13,
+              background: activeTab === t.key ? `${t.accent}15` : '#F3F4F6',
+              color: activeTab === t.key ? t.accent : '#9CA3AF',
+            }}>
+              <i className={`ti ${t.icon}`} />
+            </span>
+            {t.label}
           </button>
         ))}
       </div>
 
-      <div style={{ padding: '28px 28px' }}>
+      <div style={{padding:'24px 28px'}}>
 
         {/* ════════════════════════════════
             TAB 1 — DOCTOR SLOT ENTRIES
         ════════════════════════════════ */}
         {activeTab === 'slots' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-
-            {/* LEFT — Create Slots */}
-            <div style={C.card}>
-              <div style={C.cardTop('#eff6ff', '#2563eb')}>
-                <span style={{ fontSize: 22 }}>📅</span>
-                <div>
-                  <div style={C.cardTitle}>Doctor Slot Entries Engine</div>
-                  <div style={C.cardSub}>Auto-generate 30-min appointment blocks</div>
-                </div>
-              </div>
-              <div style={C.cardBody}>
-                <div style={C.fieldWrap}>
-                  <label style={C.label}>Search Doctor by Name (For Creation)</label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={C.searchIco}>🔍</span>
-                    <input type="text" placeholder="Type name or ID to select doctor for slots..."
-                      value={leftSearchQuery}
-                      onChange={e => { setLeftSearchQuery(e.target.value); if (!e.target.value) setDocId(''); }}
-                      style={{ ...C.inp, paddingLeft: 36 }} />
-                    {leftSearchQuery && !docId && filteredDoctorsLeft.length > 0 && (
-                      <div style={C.dropdown}>
-                        {filteredDoctorsLeft.map(d => (
-                          <div key={d.id} onClick={() => selectDoctorLeft(d)} style={C.dropRow}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                            <strong style={{ color: '#111827' }}>{d.name}</strong>
-                            <span style={{ color: '#9ca3af', fontSize: 12 }}> · {d.specialization}</span>
-                            <span style={C.idPill}>ID {d.id}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+          <div className="cc-panel">
+            {/* KPI Row */}
+            <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24}}>
+              {[
+                { label:'Total Slots Today', value: activeSlots.length || '—', sub:'from last fetch', icon:'ti-calendar', accent:'#3B82F6' },
+                { label:'Available',         value: activeSlots.filter(s=>!s.is_booked).length || '—', sub:'open for booking', icon:'ti-circle-check', accent:'#10B981' },
+                { label:'Booked',            value: activeSlots.filter(s=>s.is_booked).length  || '—', sub:'confirmed appointments', icon:'ti-user-check', accent:'#F59E0B' },
+                { label:'Slot Duration',     value:'30 min', sub:'standard block size', icon:'ti-clock', accent:'#8B5CF6' },
+              ].map((k,i) => (
+                <div key={i} style={{background:'white', borderRadius:12, padding:'16px 18px', border:'1px solid #DDE4F0', boxShadow:'0 1px 4px rgba(11,29,58,0.06)'}}>
+                  <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8}}>
+                    <span style={{fontSize:11, fontWeight:600, color:'#8896AC', textTransform:'uppercase', letterSpacing:'0.7px'}}>{k.label}</span>
+                    <span style={{width:28,height:28,borderRadius:7,background:`${k.accent}15`,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <i className={`ti ${k.icon}`} style={{fontSize:14,color:k.accent}} />
+                    </span>
                   </div>
+                  <div style={{fontSize:26, fontWeight:700, color:'#0B1D3A', lineHeight:1}}>{k.value}</div>
+                  <div style={{fontSize:11, color:'#8896AC', marginTop:5}}>{k.sub}</div>
                 </div>
-
-                <div style={{ margin: '20px 0 12px' }}>
-                  <div style={C.sectionLabel}>Proposed Allocation Slots</div>
-                </div>
-
-                {/* Column headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 40px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
-                  {['Slot Date', 'Start Time Block', 'End Time Block', ''].map((h, i) => (
-                    <div key={i} style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>
-                  ))}
-                </div>
-
-                {slots.map((slot, index) => (
-                  <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 40px', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                    <input type="date" value={slot.date} onChange={e => updateSlotRow(index, 'date', e.target.value)} style={C.slotInp} />
-                    <input type="time" value={slot.start_time} onChange={e => updateSlotRow(index, 'start_time', e.target.value)} style={C.slotInp} />
-                    <input type="time" value={slot.end_time} onChange={e => updateSlotRow(index, 'end_time', e.target.value)} style={C.slotInp} />
-                    <button onClick={() => removeSlotRow(index)} style={C.removeBtn} title="Remove row">✕</button>
-                  </div>
-                ))}
-
-                <button onClick={addSlotRow} style={C.addRowBtn}>＋ Add New Slot Row</button>
-                <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '20px 0' }} />
-                <button onClick={handleSaveSlots} style={C.savePrimary}>💾 Save Slots</button>
-              </div>
+              ))}
             </div>
 
-            {/* RIGHT — Monitor */}
-            <div style={C.card}>
-              <div style={C.cardTop('#f0fdf4', '#16a34a')}>
-                <span style={{ fontSize: 22 }}>👁️</span>
-                <div>
-                  <div style={C.cardTitle}>Monitor & Cancel Slots</div>
-                  <div style={C.cardSub}>Audit and manage existing slot records</div>
-                </div>
-              </div>
-              <div style={C.cardBody}>
-                <div style={C.fieldWrap}>
-                  <label style={C.label}>Search Doctor by Name (For Auditing)</label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={C.searchIco}>🔍</span>
-                    <input type="text" placeholder="Type name or ID..."
-                      value={rightSearchQuery}
-                      onChange={e => { setRightSearchQuery(e.target.value); if (!e.target.value) setDocId(''); }}
-                      style={{ ...C.inp, paddingLeft: 36 }} />
-                    {rightSearchQuery && !docId && filteredDoctorsRight.length > 0 && (
-                      <div style={C.dropdown}>
-                        {filteredDoctorsRight.map(d => (
-                          <div key={d.id} onClick={() => selectDoctorRight(d)} style={C.dropRow}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                            <strong style={{ color: '#111827' }}>{d.name}</strong>
-                            <span style={{ color: '#9ca3af', fontSize: 12 }}> · {d.specialization}</span>
-                            <span style={C.idPill}>ID {d.id}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'flex-end', margin: '16px 0' }}>
-                  <div>
-                    <label style={C.label}>Filter Target Date Context</label>
-                    <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} style={{ ...C.inp, marginBottom: 0 }} />
+              {/* LEFT — Create Slots */}
+              <div style={S.card}>
+                <div style={S.cardHead('#EFF6FF','#3B82F6')}>
+                  <div style={{...S.headIcon, background:'#DBEAFE'}}>
+                    <i className="ti ti-calendar-plus" style={{fontSize:18,color:'#3B82F6'}} />
                   </div>
-                  <button onClick={handleFetchSlots} style={{ height: 42, padding: '0 20px', background: 'linear-gradient(135deg, #1e3a5f, #2563eb)', color: 'white', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(37,99,235,0.3)' }}>
-                    🔍 Fetch Slots
+                  <div>
+                    <div style={S.cardTitle}>Doctor Slot Entries Engine</div>
+                    <div style={S.cardSub}>Auto-generate 30-min appointment blocks</div>
+                  </div>
+                </div>
+                <div style={S.cardBody}>
+
+                  {/* Doctor search */}
+                  <div style={S.fieldWrap}>
+                    <label style={S.label}>Search Doctor by Name (For Creation)</label>
+                    <div style={{position:'relative'}}>
+                      <i className="ti ti-search" style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'#9CA3AF',pointerEvents:'none'}} />
+                      <input type="text" placeholder="Type name or ID to select doctor for slots..."
+                        value={leftSearchQuery}
+                        onChange={e => { setLeftSearchQuery(e.target.value); if (!e.target.value) setDocId(''); }}
+                        style={{...S.input, paddingLeft:34}} />
+                      {leftSearchQuery && !docId && filteredDoctorsLeft.length > 0 && (
+                        <div className="cc-dr-drop" style={S.dropdown}>
+                          {filteredDoctorsLeft.map(d => (
+                            <div key={d.id} onClick={() => selectDoctorLeft(d)} style={S.dropRow}>
+                              <div style={{width:28,height:28,borderRadius:'50%',background:avatarGrad(d.id),display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'white',flexShrink:0}}>
+                                {d.name.slice(0,2).toUpperCase()}
+                              </div>
+                              <div style={{flex:1}}>
+                                <div style={{fontWeight:600,color:'#0B1D3A',fontSize:13}}>{d.name}</div>
+                                <div style={{fontSize:11,color:'#9CA3AF'}}>{d.specialization}</div>
+                              </div>
+                              <span style={S.idPill}>ID {d.id}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Selected doctor chip */}
+                  {docId && leftSearchQuery && (
+                    <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'linear-gradient(135deg,#EFF6FF,#F0FDF4)',border:'1px solid #93C5FD',borderRadius:10,marginBottom:14}}>
+                      <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#4F46E5,#7C3AED)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white'}}>
+                        {leftSearchQuery.slice(0,2).toUpperCase()}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,color:'#0B1D3A'}}>{leftSearchQuery}</div>
+                        <div style={{fontSize:11,color:'#8896AC'}}>Selected for slot creation</div>
+                      </div>
+                      <div onClick={() => { setDocId(''); setLeftSearchQuery(''); }}
+                        style={{width:22,height:22,borderRadius:'50%',background:'rgba(0,0,0,0.06)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:12,color:'#6B7280'}}>
+                        ×
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{height:1,background:'#DDE4F0',margin:'16px 0'}} />
+                  <div style={{fontSize:11,fontWeight:600,color:'#8896AC',textTransform:'uppercase',letterSpacing:'0.7px',marginBottom:10}}>Proposed Allocation Slots</div>
+
+                  {/* Column headers */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 36px',gap:8,marginBottom:6,padding:'0 2px'}}>
+                    {['Slot Date','Start Time Block','End Time Block',''].map((h,i) => (
+                      <div key={i} style={{fontSize:10.5,fontWeight:600,color:'#8896AC',textTransform:'uppercase',letterSpacing:'0.7px'}}>{h}</div>
+                    ))}
+                  </div>
+
+                  {slots.map((slot, index) => (
+                    <div key={index} style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 36px',gap:8,marginBottom:8,alignItems:'center',background:'#F8FAFF',padding:'10px',borderRadius:10,border:'1px solid #DDE4F0'}}>
+                      <input type="date" value={slot.date} onChange={e => updateSlotRow(index,'date',e.target.value)} style={S.slotInput} />
+                      <input type="time" value={slot.start_time} onChange={e => updateSlotRow(index,'start_time',e.target.value)} style={S.slotInput} />
+                      <input type="time" value={slot.end_time} onChange={e => updateSlotRow(index,'end_time',e.target.value)} style={S.slotInput} />
+                      <button onClick={() => removeSlotRow(index)}
+                        style={{width:32,height:32,borderRadius:8,border:'1px solid #FECACA',background:'#FEF2F2',color:'#EF4444',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="cc-add-row" onClick={addSlotRow}
+                    style={{display:'inline-flex',alignItems:'center',gap:6,fontSize:13,color:'#3B82F6',background:'white',border:'1.5px dashed #93C5FD',borderRadius:9,padding:'8px 16px',cursor:'pointer',fontWeight:600,marginBottom:16}}>
+                    <i className="ti ti-plus" /> Add New Slot Row
+                  </div>
+
+                  <button className="cc-btn-save" onClick={handleSaveSlots} style={S.btnPrimary}>
+                    <i className="ti ti-device-floppy" /> Save Slots
                   </button>
                 </div>
+              </div>
 
-                {activeSlots.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af' }}>
-                    <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
-                    <div style={{ fontSize: 13 }}>Search a doctor and date to view slots</div>
+              {/* RIGHT — Monitor */}
+              <div style={S.card}>
+                <div style={S.cardHead('#F0FDF4','#10B981')}>
+                  <div style={{...S.headIcon, background:'#DCFCE7'}}>
+                    <i className="ti ti-eye" style={{fontSize:18,color:'#10B981'}} />
                   </div>
-                ) : (
-                  <table style={C.table}>
-                    <thead>
-                      <tr style={{ background: '#f9fafb' }}>
-                        {['Time Window', 'Booking Status', 'Action'].map(h => <th key={h} style={C.th}>{h}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeSlots.map(s => (
-                        <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <td style={{ ...C.td, fontWeight: 600, color: '#111827' }}>{s.start_time} – {s.end_time}</td>
-                          <td style={C.td}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: s.is_booked ? '#fef2f2' : '#f0fdf4', color: s.is_booked ? '#dc2626' : '#16a34a', border: `1px solid ${s.is_booked ? '#fecaca' : '#bbf7d0'}` }}>
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.is_booked ? '#dc2626' : '#16a34a', display: 'inline-block' }} />
-                              {s.is_booked ? 'Booked' : 'Available'}
-                            </span>
-                          </td>
-                          <td style={C.td}>
-                            <button onClick={() => triggerDeleteConfirmation('slot', s.id, 'Are you sure you want to permanently delete this slot?')}
-                              style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontWeight: 600 }}>
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                  <div>
+                    <div style={S.cardTitle}>Monitor & Cancel Slots</div>
+                    <div style={S.cardSub}>Audit and manage existing slot records</div>
+                  </div>
+                </div>
+                <div style={S.cardBody}>
+
+                  <div style={S.fieldWrap}>
+                    <label style={S.label}>Search Doctor by Name (For Auditing)</label>
+                    <div style={{position:'relative'}}>
+                      <i className="ti ti-search" style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'#9CA3AF',pointerEvents:'none'}} />
+                      <input type="text" placeholder="Type name or ID..."
+                        value={rightSearchQuery}
+                        onChange={e => { setRightSearchQuery(e.target.value); if (!e.target.value) setDocId(''); }}
+                        style={{...S.input, paddingLeft:34}} />
+                      {rightSearchQuery && !docId && filteredDoctorsRight.length > 0 && (
+                        <div className="cc-dr-drop" style={S.dropdown}>
+                          {filteredDoctorsRight.map(d => (
+                            <div key={d.id} onClick={() => selectDoctorRight(d)} style={S.dropRow}>
+                              <div style={{width:28,height:28,borderRadius:'50%',background:avatarGrad(d.id),display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'white',flexShrink:0}}>
+                                {d.name.slice(0,2).toUpperCase()}
+                              </div>
+                              <div style={{flex:1}}>
+                                <div style={{fontWeight:600,color:'#0B1D3A',fontSize:13}}>{d.name}</div>
+                                <div style={{fontSize:11,color:'#9CA3AF'}}>{d.specialization}</div>
+                              </div>
+                              <span style={S.idPill}>ID {d.id}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'flex-end',margin:'4px 0 16px'}}>
+                    <div>
+                      <label style={S.label}>Filter Target Date Context</label>
+                      <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} style={{...S.input,marginBottom:0}} />
+                    </div>
+                    <button onClick={handleFetchSlots}
+                      style={{height:42,padding:'0 18px',background:'linear-gradient(135deg,#0D9488,#14B8A6)',color:'white',border:'none',borderRadius:10,fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>
+                      <i className="ti ti-database-search" style={{fontSize:15}} /> Fetch Slots
+                    </button>
+                  </div>
+
+                  {activeSlots.length === 0 ? (
+                    <div style={{textAlign:'center',padding:'48px 20px',color:'#8896AC'}}>
+                      <i className="ti ti-calendar-search" style={{fontSize:44,display:'block',marginBottom:12,color:'#C8D3E8'}} />
+                      <div style={{fontSize:13}}>Search a doctor and date to view slots</div>
+                    </div>
+                  ) : (
+                    <div style={{borderRadius:12,border:'1px solid #DDE4F0',overflow:'hidden'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                        <thead>
+                          <tr style={{background:'#F8FAFF'}}>
+                            {['Time Window','Booking Status','Action'].map(h => (
+                              <th key={h} style={{textAlign:'left',fontSize:10.5,fontWeight:600,color:'#8896AC',textTransform:'uppercase',letterSpacing:'0.7px',padding:'10px 14px',borderBottom:'1px solid #DDE4F0'}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeSlots.map(s => (
+                            <tr key={s.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
+                              <td style={{padding:'12px 14px',fontWeight:600,color:'#0B1D3A'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                  <i className="ti ti-clock" style={{fontSize:14,color:'#8896AC'}} />
+                                  {s.start_time} – {s.end_time}
+                                </div>
+                              </td>
+                              <td style={{padding:'12px 14px'}}>
+                                <span style={{
+                                  display:'inline-flex',alignItems:'center',gap:5,
+                                  padding:'4px 12px',borderRadius:20,fontSize:12,fontWeight:700,
+                                  background: s.is_booked ? '#FEF2F2' : '#F0FDF4',
+                                  color: s.is_booked ? '#DC2626' : '#059669',
+                                  border:`1px solid ${s.is_booked ? '#FECACA' : '#A7F3D0'}`,
+                                }}>
+                                  <span style={{width:6,height:6,borderRadius:'50%',background:s.is_booked?'#DC2626':'#059669',display:'inline-block'}} />
+                                  {s.is_booked ? 'Booked' : 'Available'}
+                                </span>
+                              </td>
+                              <td style={{padding:'12px 14px'}}>
+                                <button className="cc-btn-del"
+                                  onClick={() => triggerDeleteConfirmation('slot',s.id,'Are you sure you want to permanently delete this slot?')}
+                                  style={{fontSize:12,color:'#DC2626',background:'#FEF2F2',border:'1px solid #FECACA',padding:'5px 12px',borderRadius:7,cursor:'pointer',fontWeight:600,fontFamily:'inherit'}}>
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div style={{background:'#F8FAFF',padding:'10px 14px',fontSize:12,color:'#8896AC',borderTop:'1px solid #DDE4F0',display:'flex',alignItems:'center',gap:6}}>
+                        <i className="ti ti-clock" style={{fontSize:13}} />
+                        <span style={{background:'white',border:'1px solid #DDE4F0',borderRadius:10,padding:'2px 8px',fontWeight:600,color:'#4A5568',fontSize:11}}>{activeSlots.length}</span>
+                        slot(s) fetched
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -360,78 +529,123 @@ function AdminDashboard() {
             TAB 2 — HOSPITALS ONBOARDING
         ════════════════════════════════ */}
         {activeTab === 'hospitals' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="cc-panel" style={{display:'grid',gridTemplateColumns:'360px 1fr',gap:24}}>
+            <div style={{display:'flex',flexDirection:'column',gap:18}}>
 
-              <div style={C.card}>
-                <div style={C.cardTop('#eff6ff', '#2563eb')}>
-                  <span style={{ fontSize: 22 }}>{hospForm.id ? '✏️' : '🏢'}</span>
+              <div style={S.card}>
+                <div style={S.cardHead('#EFF6FF','#3B82F6')}>
+                  <div style={{...S.headIcon, background:'#DBEAFE'}}>
+                    <i className={`ti ${hospForm.id ? 'ti-edit' : 'ti-building-hospital'}`} style={{fontSize:18,color:'#3B82F6'}} />
+                  </div>
                   <div>
-                    <div style={C.cardTitle}>{hospForm.id ? 'Edit Facility Profile' : 'Add Single Hospital'}</div>
-                    <div style={C.cardSub}>Register a new hospital facility</div>
+                    <div style={S.cardTitle}>{hospForm.id ? 'Edit Facility Profile' : 'Add Single Hospital'}</div>
+                    <div style={S.cardSub}>Register a new hospital facility</div>
                   </div>
                 </div>
-                <div style={C.cardBody}>
+                <div style={S.cardBody}>
                   <form onSubmit={handleHospitalSubmit}>
-                    <div style={C.fieldWrap}><label style={C.label}>Hospital Name</label><input type="text" required placeholder="e.g. Apollo Hospital" value={hospForm.name} onChange={e => setHospForm({ ...hospForm, name: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Location</label><input type="text" required placeholder="e.g. Hebbal, Bangalore" value={hospForm.location} onChange={e => setHospForm({ ...hospForm, location: e.target.value })} style={C.inp} /></div>
-                    <button type="submit" style={C.savePrimary}>💾 {hospForm.id ? 'Update Hospital' : 'Save Hospital'}</button>
-                    {hospForm.id && <button type="button" onClick={() => setHospForm({ id: null, name: '', location: '' })} style={C.cancelBtn}>✕ Cancel Edit</button>}
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Hospital Name</label>
+                      <input type="text" required placeholder="e.g. Apollo Hospital"
+                        value={hospForm.name} onChange={e => setHospForm({...hospForm,name:e.target.value})} style={S.input} />
+                    </div>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Location</label>
+                      <div style={{position:'relative'}}>
+                        <i className="ti ti-map-pin" style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'#9CA3AF',pointerEvents:'none'}} />
+                        <input type="text" required placeholder="e.g. Hebbal, Bangalore"
+                          value={hospForm.location} onChange={e => setHospForm({...hospForm,location:e.target.value})} style={{...S.input,paddingLeft:34}} />
+                      </div>
+                    </div>
+                    <button type="submit" className="cc-btn-save" style={S.btnPrimary}>
+                      <i className="ti ti-device-floppy" /> {hospForm.id ? 'Update Hospital' : 'Save Hospital'}
+                    </button>
+                    {hospForm.id && (
+                      <button type="button" onClick={() => setHospForm({id:null,name:'',location:''})} style={S.btnCancel}>
+                        <i className="ti ti-x" /> Cancel Edit
+                      </button>
+                    )}
                   </form>
                 </div>
               </div>
 
               {!hospForm.id && (
-                <div style={C.card}>
-                  <div style={C.cardTop('#f0fdf4', '#16a34a')}>
-                    <span style={{ fontSize: 22 }}>📋</span>
+                <div style={S.card}>
+                  <div style={S.cardHead('#F0FDF4','#10B981')}>
+                    <div style={{...S.headIcon, background:'#DCFCE7'}}>
+                      <i className="ti ti-clipboard-list" style={{fontSize:18,color:'#10B981'}} />
+                    </div>
                     <div>
-                      <div style={C.cardTitle}>Or Paste List Rows Alternatively</div>
-                      <div style={C.cardSub}>Format: Name, Location (one per line)</div>
+                      <div style={S.cardTitle}>Batch Import</div>
+                      <div style={S.cardSub}>Format: Name, Location (one per line)</div>
                     </div>
                   </div>
-                  <div style={C.cardBody}>
+                  <div style={S.cardBody}>
                     <form onSubmit={handleBulkHospitalSubmit}>
-                      <textarea rows="4" placeholder={"Apollo, Hebbal\nKC Hospital, RR Nagar"} value={bulkHospitalsInput} onChange={e => setBulkHospitalsInput(e.target.value)} style={{ ...C.inp, height: 100, resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }} />
-                      <button type="submit" style={C.savePrimary}>💾 Save</button>
+                      <textarea rows="4" placeholder={"Apollo Hospital, Hebbal\nKC Hospital, RR Nagar"}
+                        value={bulkHospitalsInput} onChange={e => setBulkHospitalsInput(e.target.value)}
+                        style={{...S.input,height:100,resize:'vertical',fontFamily:'monospace',fontSize:13}} />
+                      <button type="submit" className="cc-btn-teal" style={S.btnTeal}>
+                        <i className="ti ti-upload" /> Import All
+                      </button>
                     </form>
                   </div>
                 </div>
               )}
             </div>
 
-            <div style={C.card}>
-              <div style={C.cardTop('#faf5ff', '#7c3aed')}>
-                <span style={{ fontSize: 22 }}>🏗️</span>
+            {/* Registry table */}
+            <div style={S.card}>
+              <div style={S.cardHead('#F5F3FF','#8B5CF6')}>
+                <div style={{...S.headIcon, background:'#EDE9FE'}}>
+                  <i className="ti ti-list-details" style={{fontSize:18,color:'#8B5CF6'}} />
+                </div>
                 <div>
-                  <div style={C.cardTitle}>Infrastructure Registry</div>
-                  <div style={C.cardSub}>{hospitals.length} facilities registered</div>
+                  <div style={S.cardTitle}>Infrastructure Registry</div>
+                  <div style={S.cardSub}>{hospitals.length} facilities registered</div>
                 </div>
               </div>
-              <div style={C.cardBody}>
-                <table style={C.table}>
-                  <thead>
-                    <tr style={{ background: '#f9fafb' }}>
-                      {['ID', 'Hospital Facility', 'Location', 'Actions'].map(h => <th key={h} style={C.th}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hospitals.map(h => (
-                      <tr key={h.id} style={{ borderBottom: '1px solid #f3f4f6' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <td style={C.td}><span style={C.idChip}>{h.id}</span></td>
-                        <td style={{ ...C.td, fontWeight: 700, color: '#111827' }}>{h.name}</td>
-                        <td style={{ ...C.td, color: '#6b7280' }}>📍 {h.location}</td>
-                        <td style={C.td}>
-                          <button onClick={() => setHospForm(h)} style={C.editBtn}>Edit</button>
-                          <button onClick={() => triggerDeleteConfirmation('hospital', h.id, `Delete "${h.name}"?`)} style={C.delBtn}>Remove</button>
-                        </td>
+              <div style={S.cardBody}>
+                <div style={{borderRadius:12,border:'1px solid #DDE4F0',overflow:'hidden'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{background:'#F8FAFF'}}>
+                        {['ID','Hospital Facility','Location','Actions'].map(h => (
+                          <th key={h} style={S.th}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                    {hospitals.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: '36px 0', fontSize: 13 }}>No hospitals registered yet</td></tr>}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {hospitals.map(h => (
+                        <tr key={h.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
+                          <td style={S.td}><span style={S.idChip}>{h.id}</span></td>
+                          <td style={S.td}>
+                            <div style={{fontWeight:700,color:'#0B1D3A',fontSize:13}}>{h.name}</div>
+                          </td>
+                          <td style={S.td}>
+                            <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:12,color:'#4A5568'}}>
+                              <span style={{width:6,height:6,borderRadius:'50%',background:'#EF4444',flexShrink:0}} />
+                              {h.location}
+                            </span>
+                          </td>
+                          <td style={S.td}>
+                            <div style={{display:'flex',gap:6}}>
+                              <button className="cc-btn-edit" onClick={() => setHospForm(h)} style={S.btnEdit}>Edit</button>
+                              <button className="cc-btn-del" onClick={() => triggerDeleteConfirmation('hospital',h.id,`Delete "${h.name}"?`)} style={S.btnDel}>Remove</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {hospitals.length === 0 && (
+                        <tr><td colSpan={4} style={{textAlign:'center',color:'#8896AC',padding:'36px 0',fontSize:13}}>No hospitals registered yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div style={{background:'#F8FAFF',padding:'10px 14px',fontSize:12,color:'#8896AC',borderTop:'1px solid #DDE4F0',display:'flex',alignItems:'center',gap:6}}>
+                    <i className="ti ti-building-hospital" style={{fontSize:13}} />
+                    Showing <span style={{background:'white',border:'1px solid #DDE4F0',borderRadius:10,padding:'2px 8px',fontWeight:600,color:'#4A5568',fontSize:11,margin:'0 2px'}}>{hospitals.length}</span> facilities
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -441,82 +655,120 @@ function AdminDashboard() {
             TAB 3 — DEPARTMENTS ONBOARDING
         ════════════════════════════════ */}
         {activeTab === 'departments' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="cc-panel" style={{display:'grid',gridTemplateColumns:'360px 1fr',gap:24}}>
+            <div style={{display:'flex',flexDirection:'column',gap:18}}>
 
-              <div style={C.card}>
-                <div style={C.cardTop('#fffbeb', '#d97706')}>
-                  <span style={{ fontSize: 22 }}>{deptForm.id ? '✏️' : '🗂️'}</span>
+              <div style={S.card}>
+                <div style={S.cardHead('#FFFBEB','#F59E0B')}>
+                  <div style={{...S.headIcon, background:'#FEF3C7'}}>
+                    <i className={`ti ${deptForm.id ? 'ti-edit' : 'ti-folder-plus'}`} style={{fontSize:18,color:'#F59E0B'}} />
+                  </div>
                   <div>
-                    <div style={C.cardTitle}>{deptForm.id ? 'Edit Department Profile' : 'Add Single Department'}</div>
-                    <div style={C.cardSub}>Register a new hospital division</div>
+                    <div style={S.cardTitle}>{deptForm.id ? 'Edit Department Profile' : 'Add Single Department'}</div>
+                    <div style={S.cardSub}>Register a new hospital division</div>
                   </div>
                 </div>
-                <div style={C.cardBody}>
+                <div style={S.cardBody}>
                   <form onSubmit={handleDepartmentSubmit}>
-                    <div style={C.fieldWrap}><label style={C.label}>Department Name</label><input type="text" required placeholder="e.g. Cardiology" value={deptForm.name} onChange={e => setDeptForm({ ...deptForm, name: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Parent Hospital ID</label><input type="number" required placeholder="e.g. 1" value={deptForm.hospital_id} onChange={e => setDeptForm({ ...deptForm, hospital_id: e.target.value })} style={C.inp} /></div>
-                    <button type="submit" style={C.savePrimary}>💾 {deptForm.id ? 'Update Department' : 'Save Department'}</button>
-                    {deptForm.id && <button type="button" onClick={() => setDeptForm({ id: null, name: '', hospital_id: '' })} style={C.cancelBtn}>✕ Cancel Edit</button>}
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Department Name</label>
+                      <input type="text" required placeholder="e.g. Cardiology"
+                        value={deptForm.name} onChange={e => setDeptForm({...deptForm,name:e.target.value})} style={S.input} />
+                    </div>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Parent Hospital ID</label>
+                      <input type="number" required placeholder="e.g. 1"
+                        value={deptForm.hospital_id} onChange={e => setDeptForm({...deptForm,hospital_id:e.target.value})} style={S.input} />
+                    </div>
+                    <button type="submit" className="cc-btn-save" style={S.btnPrimary}>
+                      <i className="ti ti-device-floppy" /> {deptForm.id ? 'Update Department' : 'Save Department'}
+                    </button>
+                    {deptForm.id && (
+                      <button type="button" onClick={() => setDeptForm({id:null,name:'',hospital_id:''})} style={S.btnCancel}>
+                        <i className="ti ti-x" /> Cancel Edit
+                      </button>
+                    )}
                   </form>
                 </div>
               </div>
 
               {!deptForm.id && (
-                <div style={C.card}>
-                  <div style={C.cardTop('#f0fdf4', '#16a34a')}>
-                    <span style={{ fontSize: 22 }}>📋</span>
+                <div style={S.card}>
+                  <div style={S.cardHead('#F0FDF4','#10B981')}>
+                    <div style={{...S.headIcon, background:'#DCFCE7'}}>
+                      <i className="ti ti-clipboard-list" style={{fontSize:18,color:'#10B981'}} />
+                    </div>
                     <div>
-                      <div style={C.cardTitle}>Or Paste List Strings Alternatively</div>
-                      <div style={C.cardSub}>One department name per line</div>
+                      <div style={S.cardTitle}>Batch Import</div>
+                      <div style={S.cardSub}>One department name per line</div>
                     </div>
                   </div>
-                  <div style={C.cardBody}>
+                  <div style={S.cardBody}>
                     <form onSubmit={handleBulkDepartmentSubmit}>
-                      <textarea rows="4" placeholder={"Cardiology\nNeurology\nRadiology"} value={bulkDepartmentsInput} onChange={e => setBulkDepartmentsInput(e.target.value)} style={{ ...C.inp, height: 100, resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }} />
-                      <button type="submit" style={C.savePrimary}>💾 Save</button>
+                      <textarea rows="4" placeholder={"Cardiology\nNeurology\nRadiology"}
+                        value={bulkDepartmentsInput} onChange={e => setBulkDepartmentsInput(e.target.value)}
+                        style={{...S.input,height:100,resize:'vertical',fontFamily:'monospace',fontSize:13}} />
+                      <button type="submit" className="cc-btn-teal" style={S.btnTeal}>
+                        <i className="ti ti-upload" /> Import All
+                      </button>
                     </form>
                   </div>
                 </div>
               )}
             </div>
 
-            <div style={C.card}>
-              <div style={C.cardTop('#faf5ff', '#7c3aed')}>
-                <span style={{ fontSize: 22 }}>🏛️</span>
+            {/* Departments table */}
+            <div style={S.card}>
+              <div style={S.cardHead('#F5F3FF','#8B5CF6')}>
+                <div style={{...S.headIcon, background:'#EDE9FE'}}>
+                  <i className="ti ti-sitemap" style={{fontSize:18,color:'#8B5CF6'}} />
+                </div>
                 <div>
-                  <div style={C.cardTitle}>Department Division Operations</div>
-                  <div style={C.cardSub}>{departments.length} departments registered</div>
+                  <div style={S.cardTitle}>Department Division Operations</div>
+                  <div style={S.cardSub}>{departments.length} departments registered</div>
                 </div>
               </div>
-              <div style={C.cardBody}>
-                <table style={C.table}>
-                  <thead>
-                    <tr style={{ background: '#f9fafb' }}>
-                      {['ID', 'Department Name', 'Hospital ID', 'Actions'].map(h => <th key={h} style={C.th}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {departments.map(d => {
-                      const dColors = { Cardiology: ['#fff7ed','#ea580c'], Neurology: ['#faf5ff','#7c3aed'], Radiology: ['#f0fdf4','#16a34a'] };
-                      const [bg, fg] = dColors[d.name] || ['#f1f5f9', '#475569'];
-                      return (
-                        <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <td style={C.td}><span style={C.idChip}>{d.id}</span></td>
-                          <td style={C.td}><span style={{ background: bg, color: fg, borderRadius: 20, fontSize: 12, fontWeight: 700, padding: '4px 12px', border: `1px solid ${fg}30` }}>{d.name}</span></td>
-                          <td style={C.td}><span style={C.idChip}>{d.hospital_id}</span></td>
-                          <td style={C.td}>
-                            <button onClick={() => setDeptForm(d)} style={C.editBtn}>Edit</button>
-                            <button onClick={() => triggerDeleteConfirmation('department', d.id, `Delete department node "${d.name}"?`)} style={C.delBtn}>Remove</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {departments.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: '36px 0', fontSize: 13 }}>No departments registered yet</td></tr>}
-                  </tbody>
-                </table>
+              <div style={S.cardBody}>
+                <div style={{borderRadius:12,border:'1px solid #DDE4F0',overflow:'hidden'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{background:'#F8FAFF'}}>
+                        {['ID','Department Name','Hospital ID','Actions'].map(h => (
+                          <th key={h} style={S.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {departments.map(d => {
+                        const ds = deptStyle(d.name);
+                        return (
+                          <tr key={d.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
+                            <td style={S.td}><span style={S.idChip}>{d.id}</span></td>
+                            <td style={S.td}>
+                              <span style={{background:ds.bg,color:ds.color,border:`1px solid ${ds.border}`,borderRadius:20,fontSize:12,fontWeight:700,padding:'3px 12px'}}>
+                                {d.name}
+                              </span>
+                            </td>
+                            <td style={S.td}><span style={S.idChip}>{d.hospital_id}</span></td>
+                            <td style={S.td}>
+                              <div style={{display:'flex',gap:6}}>
+                                <button className="cc-btn-edit" onClick={() => setDeptForm(d)} style={S.btnEdit}>Edit</button>
+                                <button className="cc-btn-del" onClick={() => triggerDeleteConfirmation('department',d.id,`Delete department "${d.name}"?`)} style={S.btnDel}>Remove</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {departments.length === 0 && (
+                        <tr><td colSpan={4} style={{textAlign:'center',color:'#8896AC',padding:'36px 0',fontSize:13}}>No departments registered yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div style={{background:'#F8FAFF',padding:'10px 14px',fontSize:12,color:'#8896AC',borderTop:'1px solid #DDE4F0',display:'flex',alignItems:'center',gap:6}}>
+                    <i className="ti ti-folders" style={{fontSize:13}} />
+                    Showing <span style={{background:'white',border:'1px solid #DDE4F0',borderRadius:10,padding:'2px 8px',fontWeight:600,color:'#4A5568',fontSize:11,margin:'0 2px'}}>{departments.length}</span> departments
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -526,111 +778,261 @@ function AdminDashboard() {
             TAB 4 — DOCTORS DIRECTORY
         ════════════════════════════════ */}
         {activeTab === 'doctors' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24 }}>
+          <div className="cc-panel" style={{display:'grid',gridTemplateColumns:'360px 1fr',gap:24}}>
 
-            <div style={C.card}>
-              <div style={C.cardTop('#eff6ff', '#2563eb')}>
-                <span style={{ fontSize: 22 }}>{docForm.id ? '✏️' : '🩺'}</span>
+            <div style={S.card}>
+              <div style={S.cardHead('#EFF6FF','#3B82F6')}>
+                <div style={{...S.headIcon, background:'#DBEAFE'}}>
+                  <i className={`ti ${docForm.id ? 'ti-edit' : 'ti-user-plus'}`} style={{fontSize:18,color:'#3B82F6'}} />
+                </div>
                 <div>
-                  <div style={C.cardTitle}>{docForm.id ? 'Edit Doctor Profile' : 'Register Doctor Account'}</div>
-                  <div style={C.cardSub}>Create or update practitioner record</div>
+                  <div style={S.cardTitle}>{docForm.id ? 'Edit Doctor Profile' : 'Register Doctor Account'}</div>
+                  <div style={S.cardSub}>Create or update practitioner record</div>
                 </div>
               </div>
-              <div style={C.cardBody}>
+              <div style={S.cardBody}>
                 <form onSubmit={handleDoctorSubmit}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
-                    <div style={{ ...C.fieldWrap, gridColumn: '1 / 3' }}><label style={C.label}>Full Name</label><input type="text" required placeholder="Dr. Full Name" value={docForm.name} onChange={e => setDocForm({ ...docForm, name: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Email</label><input type="email" required placeholder="doctor@email.com" value={docForm.email} onChange={e => setDocForm({ ...docForm, email: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Phone</label><input type="text" required placeholder="+91 ..." value={docForm.phone} onChange={e => setDocForm({ ...docForm, phone: e.target.value })} style={C.inp} /></div>
-                    {!docForm.id && <div style={{ ...C.fieldWrap, gridColumn: '1 / 3' }}><label style={C.label}>Password</label><input type="password" required placeholder="••••••••" value={docForm.password} onChange={e => setDocForm({ ...docForm, password: e.target.value })} style={C.inp} /></div>}
-                    <div style={C.fieldWrap}><label style={C.label}>Specialization</label><input type="text" required placeholder="e.g. MBBS" value={docForm.specialization} onChange={e => setDocForm({ ...docForm, specialization: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Experience (Years)</label><input type="number" required placeholder="10" value={docForm.years_of_experience} onChange={e => setDocForm({ ...docForm, years_of_experience: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Hospital ID</label><input type="number" required placeholder="1" value={docForm.hospital_id} onChange={e => setDocForm({ ...docForm, hospital_id: e.target.value })} style={C.inp} /></div>
-                    <div style={C.fieldWrap}><label style={C.label}>Department ID</label><input type="number" required placeholder="1" value={docForm.department_id} onChange={e => setDocForm({ ...docForm, department_id: e.target.value })} style={C.inp} /></div>
+                  <div style={S.fieldWrap}>
+                    <label style={S.label}>Full Name</label>
+                    <input type="text" required placeholder="Dr. Full Name"
+                      value={docForm.name} onChange={e => setDocForm({...docForm,name:e.target.value})} style={S.input} />
                   </div>
-                  <button type="submit" style={C.savePrimary}>💾 {docForm.id ? 'Update Doctor' : 'Register Doctor'}</button>
-                  {docForm.id && <button type="button" onClick={() => setDocForm({ id: null, name: '', email: '', password: '', phone: '', specialization: '', years_of_experience: '', hospital_id: '', department_id: '' })} style={C.cancelBtn}>✕ Cancel Edit</button>}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Email</label>
+                      <input type="email" required placeholder="doctor@email.com"
+                        value={docForm.email} onChange={e => setDocForm({...docForm,email:e.target.value})} style={S.input} />
+                    </div>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Phone</label>
+                      <input type="text" required placeholder="+91 ..."
+                        value={docForm.phone} onChange={e => setDocForm({...docForm,phone:e.target.value})} style={S.input} />
+                    </div>
+                  </div>
+                  {!docForm.id && (
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Password</label>
+                      <input type="password" required placeholder="••••••••"
+                        value={docForm.password} onChange={e => setDocForm({...docForm,password:e.target.value})} style={S.input} />
+                    </div>
+                  )}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Specialization</label>
+                      <input type="text" required placeholder="e.g. MBBS"
+                        value={docForm.specialization} onChange={e => setDocForm({...docForm,specialization:e.target.value})} style={S.input} />
+                    </div>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Experience (Years)</label>
+                      <input type="number" required placeholder="10"
+                        value={docForm.years_of_experience} onChange={e => setDocForm({...docForm,years_of_experience:e.target.value})} style={S.input} />
+                    </div>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Hospital ID</label>
+                      <input type="number" required placeholder="1"
+                        value={docForm.hospital_id} onChange={e => setDocForm({...docForm,hospital_id:e.target.value})} style={S.input} />
+                    </div>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>Department ID</label>
+                      <input type="number" required placeholder="1"
+                        value={docForm.department_id} onChange={e => setDocForm({...docForm,department_id:e.target.value})} style={S.input} />
+                    </div>
+                  </div>
+                  <button type="submit" className="cc-btn-save" style={S.btnPrimary}>
+                    <i className="ti ti-stethoscope" /> {docForm.id ? 'Update Doctor' : 'Register Doctor'}
+                  </button>
+                  {docForm.id && (
+                    <button type="button" onClick={() => setDocForm({id:null,name:'',email:'',password:'',phone:'',specialization:'',years_of_experience:'',hospital_id:'',department_id:''})} style={S.btnCancel}>
+                      <i className="ti ti-x" /> Cancel Edit
+                    </button>
+                  )}
                 </form>
               </div>
             </div>
 
-            <div style={C.card}>
-              <div style={C.cardTop('#faf5ff', '#7c3aed')}>
-                <span style={{ fontSize: 22 }}>🪪</span>
+            {/* Doctors table */}
+            <div style={S.card}>
+              <div style={S.cardHead('#F5F3FF','#8B5CF6')}>
+                <div style={{...S.headIcon, background:'#EDE9FE'}}>
+                  <i className="ti ti-users" style={{fontSize:18,color:'#8B5CF6'}} />
+                </div>
                 <div>
-                  <div style={C.cardTitle}>Medical Staff Directory</div>
-                  <div style={C.cardSub}>{doctors.length} practitioners registered</div>
+                  <div style={S.cardTitle}>Medical Staff Directory</div>
+                  <div style={S.cardSub}>{doctors.length} practitioners registered</div>
                 </div>
               </div>
-              <div style={C.cardBody}>
-                <table style={C.table}>
-                  <thead>
-                    <tr style={{ background: '#f9fafb' }}>
-                      {['ID', 'Dr. Name', 'Specialization', 'Exp', 'Hosp ID', 'Dept ID', 'Actions'].map(h => <th key={h} style={C.th}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {doctors.map(d => (
-                      <tr key={d.id} style={{ borderBottom: '1px solid #f3f4f6' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <td style={C.td}><span style={C.idChip}>{d.id}</span></td>
-                        <td style={C.td}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                              {d.name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <span style={{ fontWeight: 700, color: '#111827', fontSize: 13 }}>{d.name}</span>
-                          </div>
-                        </td>
-                        <td style={C.td}><span style={{ background: '#eff6ff', color: '#2563eb', borderRadius: 20, fontSize: 12, fontWeight: 600, padding: '3px 10px' }}>{d.specialization}</span></td>
-                        <td style={{ ...C.td, color: '#6b7280', fontSize: 13 }}>{d.years_of_experience} Yrs</td>
-                        <td style={C.td}><span style={C.idChip}>{d.hospital_id}</span></td>
-                        <td style={C.td}><span style={C.idChip}>{d.department_id}</span></td>
-                        <td style={C.td}>
-                          <button onClick={() => setDocForm(d)} style={C.editBtn}>Edit</button>
-                          <button onClick={() => triggerDeleteConfirmation('doctor', d.id, `Delete Dr. ${d.name}?`)} style={C.delBtn}>Remove</button>
-                        </td>
+              <div style={S.cardBody}>
+                <div style={{borderRadius:12,border:'1px solid #DDE4F0',overflow:'hidden'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{background:'#F8FAFF'}}>
+                        {['ID','Doctor','Specialization','Exp','Hosp ID','Dept ID','Actions'].map(h => (
+                          <th key={h} style={S.th}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                    {doctors.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9ca3af', padding: '36px 0', fontSize: 13 }}>No doctors registered yet</td></tr>}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {doctors.map(d => (
+                        <tr key={d.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
+                          <td style={S.td}><span style={S.idChip}>{d.id}</span></td>
+                          <td style={S.td}>
+                            <div style={{display:'flex',alignItems:'center',gap:9}}>
+                              <div style={{width:32,height:32,borderRadius:'50%',background:avatarGrad(d.id),display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',flexShrink:0}}>
+                                {d.name.slice(0,2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{fontWeight:700,color:'#0B1D3A',fontSize:13}}>{d.name}</div>
+                                <div style={{fontSize:11,color:'#8896AC'}}>ID: DR-{String(d.id).padStart(3,'0')}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={S.td}>
+                            <span style={{background:'#EFF6FF',color:'#2563EB',borderRadius:20,fontSize:12,fontWeight:600,padding:'3px 10px',border:'1px solid #BFDBFE'}}>
+                              {d.specialization}
+                            </span>
+                          </td>
+                          <td style={S.td}>
+                            <span style={{fontWeight:600,color:'#0B1D3A'}}>{d.years_of_experience}</span>
+                            <span style={{fontSize:11,color:'#8896AC'}}> Yrs</span>
+                          </td>
+                          <td style={S.td}><span style={S.idChip}>{d.hospital_id}</span></td>
+                          <td style={S.td}><span style={S.idChip}>{d.department_id}</span></td>
+                          <td style={S.td}>
+                            <div style={{display:'flex',gap:6}}>
+                              <button className="cc-btn-edit" onClick={() => setDocForm(d)} style={S.btnEdit}>Edit</button>
+                              <button className="cc-btn-del" onClick={() => triggerDeleteConfirmation('doctor',d.id,`Delete Dr. ${d.name}?`)} style={S.btnDel}>Remove</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {doctors.length === 0 && (
+                        <tr><td colSpan={7} style={{textAlign:'center',color:'#8896AC',padding:'36px 0',fontSize:13}}>No doctors registered yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div style={{background:'#F8FAFF',padding:'10px 14px',fontSize:12,color:'#8896AC',borderTop:'1px solid #DDE4F0',display:'flex',alignItems:'center',gap:6}}>
+                    <i className="ti ti-stethoscope" style={{fontSize:13}} />
+                    Showing <span style={{background:'white',border:'1px solid #DDE4F0',borderRadius:10,padding:'2px 8px',fontWeight:600,color:'#4A5568',fontSize:11,margin:'0 2px'}}>{doctors.length}</span> practitioners
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
 }
 
-// ── SHARED STYLE SYSTEM ──
-const C = {
-  card: { background: 'white', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', border: '1px solid #f3f4f6', overflow: 'hidden' },
-  cardTop: (bg, accent) => ({ background: bg, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${accent}20` }),
-  cardTitle: { fontSize: 15, fontWeight: 700, color: '#111827' },
-  cardSub: { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  cardBody: { padding: '20px 22px' },
-  sectionLabel: { fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 },
-  fieldWrap: { marginBottom: 14 },
-  label: { fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 },
-  inp: { width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, color: '#111827', boxSizing: 'border-box', background: '#fafafa', outline: 'none', transition: 'border-color 0.15s' },
-  slotInp: { width: '100%', padding: '9px 10px', border: '1.5px solid #e5e7eb', borderRadius: 9, fontSize: 13, color: '#111827', boxSizing: 'border-box', background: '#fafafa', outline: 'none' },
-  searchIco: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' },
-  dropdown: { position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 200, overflowY: 'auto', marginTop: 4 },
-  dropRow: { padding: '11px 14px', cursor: 'pointer', borderBottom: '1px solid #f9fafb', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, transition: 'background 0.1s' },
-  idPill: { marginLeft: 'auto', background: '#eff6ff', color: '#2563eb', borderRadius: 20, fontSize: 11, fontWeight: 700, padding: '2px 9px' },
-  removeBtn: { width: 34, height: 34, borderRadius: 8, border: '1.5px solid #fee2e2', background: '#fff5f5', color: '#dc2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 },
-  addRowBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#2563eb', background: '#eff6ff', border: '1.5px dashed #bfdbfe', borderRadius: 9, padding: '8px 16px', cursor: 'pointer', fontWeight: 600, marginTop: 4 },
-  savePrimary: { width: '100%', padding: '12px', background: 'linear-gradient(135deg, #1e3a5f, #2563eb)', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', marginTop: 4 },
-  cancelBtn: { width: '100%', marginTop: 10, padding: '11px', background: 'white', color: '#6b7280', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '10px 14px', borderBottom: '1px solid #f3f4f6' },
-  td: { padding: '12px 14px', verticalAlign: 'middle' },
-  idChip: { display: 'inline-block', background: '#f3f4f6', color: '#6b7280', borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 700, fontFamily: 'monospace' },
-  editBtn: { background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginRight: 6 },
-  delBtn: { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600 },
+/* ─── SHARED STYLE TOKENS ─── */
+const S = {
+  card: {
+    background:'white', borderRadius:16,
+    boxShadow:'0 1px 3px rgba(11,29,58,0.07),0 4px 16px rgba(11,29,58,0.05)',
+    border:'1px solid #DDE4F0', overflow:'hidden',
+  },
+  cardHead: (bg, accent) => ({
+    background:bg, padding:'16px 22px',
+    display:'flex', alignItems:'center', gap:12,
+    borderBottom:`1px solid ${accent}20`,
+  }),
+  headIcon: {
+    width:38, height:38, borderRadius:10,
+    display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+  },
+  cardTitle: { fontSize:15, fontWeight:700, color:'#0B1D3A' },
+  cardSub:   { fontSize:12, color:'#8896AC', marginTop:2 },
+  cardBody:  { padding:'20px 22px' },
+  fieldWrap: { marginBottom:14 },
+  label: {
+    fontSize:11, fontWeight:600, color:'#4A5568',
+    display:'block', marginBottom:5,
+    textTransform:'uppercase', letterSpacing:'0.6px',
+  },
+  input: {
+    width:'100%', padding:'10px 12px',
+    border:'1.5px solid #DDE4F0', borderRadius:10,
+    fontSize:13, color:'#0B1D3A',
+    background:'#F8FAFF', outline:'none',
+    fontFamily:'inherit', transition:'border-color 0.15s',
+    boxSizing:'border-box',
+  },
+  slotInput: {
+    width:'100%', padding:'9px 10px',
+    border:'1.5px solid #DDE4F0', borderRadius:9,
+    fontSize:13, color:'#0B1D3A',
+    background:'white', outline:'none',
+    fontFamily:'inherit', boxSizing:'border-box',
+  },
+  dropdown: {
+    position:'absolute', top:'calc(100% + 4px)', left:0, right:0,
+    background:'white', border:'1px solid #DDE4F0',
+    borderRadius:12, boxShadow:'0 10px 30px rgba(11,29,58,0.12)',
+    zIndex:200, maxHeight:220, overflowY:'auto',
+  },
+  dropRow: {
+    padding:'10px 14px', cursor:'pointer',
+    borderBottom:'1px solid #F0F4FF',
+    fontSize:13, display:'flex', alignItems:'center', gap:8,
+    transition:'background 0.1s', background:'white',
+  },
+  idPill: {
+    marginLeft:'auto', background:'#EFF6FF', color:'#2563EB',
+    borderRadius:20, fontSize:11, fontWeight:700, padding:'2px 9px',
+  },
+  btnPrimary: {
+    width:'100%', padding:'12px',
+    background:'linear-gradient(135deg,#1D4ED8,#3B82F6)',
+    color:'white', border:'none', borderRadius:10,
+    fontSize:14, fontWeight:700, cursor:'pointer',
+    boxShadow:'0 4px 14px rgba(37,99,235,0.28)',
+    marginTop:4, display:'flex', alignItems:'center',
+    justifyContent:'center', gap:7, fontFamily:'inherit',
+    transition:'all 0.2s',
+  },
+  btnTeal: {
+    width:'100%', padding:'11px',
+    background:'linear-gradient(135deg,#0D9488,#14B8A6)',
+    color:'white', border:'none', borderRadius:10,
+    fontSize:13, fontWeight:700, cursor:'pointer',
+    marginTop:10, display:'flex', alignItems:'center',
+    justifyContent:'center', gap:7, fontFamily:'inherit',
+    transition:'all 0.2s',
+  },
+  btnCancel: {
+    width:'100%', marginTop:10, padding:'11px',
+    background:'white', color:'#6B7280',
+    border:'1.5px solid #DDE4F0', borderRadius:10,
+    fontSize:13, fontWeight:600, cursor:'pointer',
+    display:'flex', alignItems:'center', justifyContent:'center',
+    gap:6, fontFamily:'inherit',
+  },
+  th: {
+    textAlign:'left', fontSize:10.5, fontWeight:600,
+    color:'#8896AC', textTransform:'uppercase',
+    letterSpacing:'0.7px', padding:'10px 14px',
+    borderBottom:'1px solid #DDE4F0', whiteSpace:'nowrap',
+  },
+  td: { padding:'12px 14px', verticalAlign:'middle' },
+  idChip: {
+    display:'inline-flex', alignItems:'center', justifyContent:'center',
+    background:'#F0F4FF', color:'#4A5568',
+    borderRadius:6, padding:'3px 8px',
+    fontSize:11, fontWeight:700, fontFamily:'monospace',
+  },
+  btnEdit: {
+    background:'#EFF6FF', color:'#2563EB',
+    border:'1px solid #BFDBFE', padding:'5px 12px',
+    borderRadius:7, cursor:'pointer', fontSize:12,
+    fontWeight:600, fontFamily:'inherit',
+  },
+  btnDel: {
+    background:'#FEF2F2', color:'#DC2626',
+    border:'1px solid #FECACA', padding:'5px 12px',
+    borderRadius:7, cursor:'pointer', fontSize:12,
+    fontWeight:600, fontFamily:'inherit',
+  },
 };
 
 export default AdminDashboard;

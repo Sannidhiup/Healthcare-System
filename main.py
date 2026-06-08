@@ -13,6 +13,10 @@ from supabase import create_client, Client
 import os
 import uuid
 import re
+from dotenv import load_dotenv
+
+# Load the environment variables from the .env file
+load_dotenv()
 
 # --- NEW AI IMPORTS ---
 import google.generativeai as genai
@@ -546,7 +550,22 @@ def get_patient_bookings_synchronized(db: Session = Depends(get_db), current_use
     patient = db.query(models.Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(404, "Patient profile not found")
-    
+        
+    # --- 🧹 AUTO-CLEANUP LOGIC STARTS HERE ---
+    today = date_type.today()
+    expired_bookings = db.query(models.Appointment).filter(
+        models.Appointment.patient_id == patient.id,
+        models.Appointment.appointment_date < today,
+        models.Appointment.status.in_(["SCHEDULED", "CONFIRMED"])
+    ).all()
+
+    if expired_bookings:
+        for b in expired_bookings:
+            b.status = "CANCELLED" # or "NO-SHOW" if you prefer
+        db.commit() # Save the cancellations to Supabase
+    # --- 🧹 AUTO-CLEANUP LOGIC ENDS HERE ---
+
+    # Now fetch the freshly updated list of bookings
     bookings = db.query(models.Appointment).filter_by(patient_id=patient.id).all()
 
     results = []
@@ -566,7 +585,6 @@ def get_patient_bookings_synchronized(db: Session = Depends(get_db), current_use
         })
 
     return results
-
 # =========================================================
 # ---- HELPER: EXTRACT & EMBED PDF (AI DATA PIPELINE) ----
 # =========================================================
