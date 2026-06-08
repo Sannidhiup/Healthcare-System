@@ -248,7 +248,6 @@ function DoctorDashboard() {
   const scheduled  = schedule.filter(a => a.status === 'SCHEDULED' || a.status === 'CONFIRMED').length;
   const inProgress = schedule.filter(a => a.status === 'STARTED' || a.status === 'ARRIVED').length;
   const finished   = schedule.filter(a => a.status === 'COMPLETED').length;
-  const cancelled  = schedule.filter(a => a.status === 'CANCELLED').length;
 
   const filteredSchedule = schedule.filter(a => {
     if (activeTab === 'TODAY')    return a.date === todayISO;
