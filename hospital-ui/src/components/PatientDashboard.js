@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
- 
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
- 
+
 /* ─────────────────────────────────────────────
    ICON COMPONENTS  (inline SVG, no extra deps)
 ───────────────────────────────────────────── */
@@ -64,298 +64,68 @@ const AlertIcon = () => (
     <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
   </svg>
 );
- 
+
 /* ─────────────────────────────────────────────
    STYLES OBJECT
 ───────────────────────────────────────────── */
 const S = {
-  /* layout */
-  page: {
-    backgroundColor: '#F7F6F3',
-    minHeight: '100vh',
-    fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  layout: {
-    display: 'grid',
-    gridTemplateColumns: '300px 1fr',
-    gap: 0,
-    minHeight: 'calc(100vh - 60px)',
-  },
- 
-  /* sidebar */
-  sidebar: {
-    background: '#FFFFFF',
-    borderRight: '1px solid #EEECE5',
-    padding: '28px 20px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px',
-  },
-  sectionLabel: {
-    fontSize: 10, fontWeight: 700,
-    letterSpacing: '0.08em', textTransform: 'uppercase',
-    color: '#888780', marginBottom: 10,
-  },
- 
-  /* cards */
-  card: {
-    background: '#FFFFFF',
-    border: '1px solid #EEECE5',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    padding: '16px 20px',
-    borderBottom: '1px solid #EEECE5',
-    display: 'flex', alignItems: 'center', gap: 10,
-  },
-  cardIconWrap: (bg, color) => ({
-    width: 34, height: 34, borderRadius: 8,
-    background: bg, color: color,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  }),
+  page: { backgroundColor: '#F7F6F3', minHeight: '100vh', fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  layout: { display: 'grid', gridTemplateColumns: '300px 1fr', gap: 0, minHeight: 'calc(100vh - 60px)' },
+  sidebar: { background: '#FFFFFF', borderRight: '1px solid #EEECE5', padding: '28px 20px', display: 'flex', flexDirection: 'column', gap: '24px' },
+  sectionLabel: { fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#888780', marginBottom: 10 },
+  card: { background: '#FFFFFF', border: '1px solid #EEECE5', borderRadius: 12, overflow: 'hidden' },
+  cardHeader: { padding: '16px 20px', borderBottom: '1px solid #EEECE5', display: 'flex', alignItems: 'center', gap: 10 },
+  cardIconWrap: (bg, color) => ({ width: 34, height: 34, borderRadius: 8, background: bg, color: color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }),
   cardTitle: { fontSize: 14, fontWeight: 600, color: '#2C2C2A' },
   cardSub: { fontSize: 12, color: '#888780', marginTop: 2 },
   cardBody: { padding: '20px' },
- 
-  /* form */
   fieldWrap: { marginBottom: 13 },
-  label: {
-    display: 'block', fontSize: 11, fontWeight: 600,
-    color: '#5F5E5A', marginBottom: 5, letterSpacing: '0.02em',
-  },
+  label: { display: 'block', fontSize: 11, fontWeight: 600, color: '#5F5E5A', marginBottom: 5, letterSpacing: '0.02em' },
   selectWrap: { position: 'relative' },
-  selectArrow: {
-    position: 'absolute', right: 11, top: '50%',
-    transform: 'translateY(-50%)', pointerEvents: 'none',
-    color: '#888780',
-  },
-  input: {
-    width: '100%', fontFamily: 'inherit',
-    fontSize: 13, padding: '8px 12px',
-    border: '1px solid #D3D1C7', borderRadius: 8,
-    background: '#F7F6F3', color: '#2C2C2A',
-    outline: 'none', boxSizing: 'border-box',
-    transition: 'border-color 0.15s, background 0.15s',
-    appearance: 'none', WebkitAppearance: 'none',
-  },
- 
-  /* buttons */
-  btnPrimary: {
-    width: '100%', fontFamily: 'inherit',
-    fontSize: 13, fontWeight: 600,
-    padding: '10px', borderRadius: 8,
-    border: 'none', background: '#0F6E56', color: '#FFFFFF',
-    cursor: 'pointer', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', gap: 7,
-    marginTop: 14, transition: 'background 0.15s',
-  },
-  btnAttach: {
-    width: '100%', fontFamily: 'inherit',
-    fontSize: 12, fontWeight: 600,
-    padding: '9px', borderRadius: 8,
-    border: 'none', background: '#BA7517', color: '#FFFFFF',
-    cursor: 'pointer', transition: 'background 0.15s',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  },
-  btnAttachDisabled: {
-    width: '100%', fontFamily: 'inherit',
-    fontSize: 12, fontWeight: 600,
-    padding: '9px', borderRadius: 8,
-    border: 'none', background: '#D3D1C7', color: '#888780',
-    cursor: 'not-allowed',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  },
- 
-  /* slots */
-  slotsHeader: {
-    fontSize: 10, fontWeight: 700,
-    color: '#888780', letterSpacing: '0.07em',
-    textTransform: 'uppercase', margin: '18px 0 10px',
-  },
-  slotsGrid: {
-    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
-  },
-  slot: {
-    padding: '7px 8px', borderRadius: 7,
-    border: '1px solid #9FE1CB', background: '#E1F5EE',
-    color: '#0F6E56', fontSize: 12, fontWeight: 500,
-    cursor: 'pointer', textAlign: 'center',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-    transition: 'all 0.15s', fontFamily: 'inherit',
-  },
- 
-  /* attach card (amber) */
-  attachCard: {
-    background: '#FFFBF0',
-    border: '1px solid #FAD7A0',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  attachHeader: {
-    padding: '16px 20px',
-    borderBottom: '1px solid #FAD7A0',
-    display: 'flex', alignItems: 'center', gap: 10,
-  },
+  selectArrow: { position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#888780' },
+  input: { width: '100%', fontFamily: 'inherit', fontSize: 13, padding: '8px 12px', border: '1px solid #D3D1C7', borderRadius: 8, background: '#F7F6F3', color: '#2C2C2A', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s, background 0.15s', appearance: 'none', WebkitAppearance: 'none' },
+  btnPrimary: { width: '100%', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '10px', borderRadius: 8, border: 'none', background: '#0F6E56', color: '#FFFFFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 14, transition: 'background 0.15s' },
+  btnAttach: { width: '100%', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '9px', borderRadius: 8, border: 'none', background: '#BA7517', color: '#FFFFFF', cursor: 'pointer', transition: 'background 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  btnAttachDisabled: { width: '100%', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '9px', borderRadius: 8, border: 'none', background: '#D3D1C7', color: '#888780', cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  slotsHeader: { fontSize: 10, fontWeight: 700, color: '#888780', letterSpacing: '0.07em', textTransform: 'uppercase', margin: '18px 0 10px' },
+  slotsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
+  slot: { padding: '7px 8px', borderRadius: 7, border: '1px solid #9FE1CB', background: '#E1F5EE', color: '#0F6E56', fontSize: 12, fontWeight: 500, cursor: 'pointer', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, transition: 'all 0.15s', fontFamily: 'inherit' },
+  attachCard: { background: '#FFFBF0', border: '1px solid #FAD7A0', borderRadius: 12, overflow: 'hidden' },
+  attachHeader: { padding: '16px 20px', borderBottom: '1px solid #FAD7A0', display: 'flex', alignItems: 'center', gap: 10 },
   attachTitle: { fontSize: 14, fontWeight: 600, color: '#854F0B' },
   attachSub: { fontSize: 12, color: '#BA7517', marginTop: 2 },
-  fileZone: {
-    border: '1.5px dashed #F5C875',
-    borderRadius: 8, padding: '14px',
-    textAlign: 'center', background: 'rgba(255,255,255,0.6)',
-    cursor: 'pointer', marginBottom: 12,
-  },
- 
-  /* main content */
-  main: {
-    padding: '32px 36px',
-    display: 'flex', flexDirection: 'column', gap: 28,
-  },
- 
-  /* page header */
-  greeting: {
-    fontSize: 24, fontWeight: 600,
-    color: '#2C2C2A', letterSpacing: '-0.3px',
-  },
+  fileZone: { border: '1.5px dashed #F5C875', borderRadius: 8, padding: '14px', textAlign: 'center', background: 'rgba(255,255,255,0.6)', cursor: 'pointer', marginBottom: 12 },
+  main: { padding: '32px 36px', display: 'flex', flexDirection: 'column', gap: 28 },
+  greeting: { fontSize: 24, fontWeight: 600, color: '#2C2C2A', letterSpacing: '-0.3px' },
   greetingSub: { fontSize: 13, color: '#888780', marginTop: 4 },
-  todayBadge: {
-    display: 'flex', alignItems: 'center', gap: 7,
-    background: '#E1F5EE', border: '1px solid #9FE1CB',
-    borderRadius: 8, padding: '8px 14px',
-    fontSize: 12, color: '#0F6E56', fontWeight: 500,
-  },
- 
-  /* stats */
-  statsRow: {
-    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16,
-  },
-  statCard: {
-    background: '#FFFFFF', border: '1px solid #EEECE5',
-    borderRadius: 12, padding: '18px 20px',
-    display: 'flex', flexDirection: 'column', gap: 5,
-  },
-  statIconWrap: (bg, color) => ({
-    width: 36, height: 36, borderRadius: 8,
-    background: bg, color: color,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
-  }),
+  todayBadge: { display: 'flex', alignItems: 'center', gap: 7, background: '#E1F5EE', border: '1px solid #9FE1CB', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#0F6E56', fontWeight: 500 },
+  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 },
+  statCard: { background: '#FFFFFF', border: '1px solid #EEECE5', borderRadius: 12, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 5 },
+  statIconWrap: (bg, color) => ({ width: 36, height: 36, borderRadius: 8, background: bg, color: color, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }),
   statValue: { fontSize: 26, fontWeight: 700, color: '#2C2C2A', lineHeight: 1 },
   statLabel: { fontSize: 12, color: '#888780', fontWeight: 400 },
-  badge: (bg, color) => ({
-    display: 'inline-flex', alignItems: 'center', gap: 3,
-    fontSize: 10, fontWeight: 700,
-    padding: '2px 7px', borderRadius: 999,
-    background: bg, color: color, marginTop: 2,
-  }),
- 
-  /* info banner */
-  infoBanner: {
-    display: 'flex', alignItems: 'center', gap: 12,
-    background: '#E6F1FB', border: '1px solid #85B7EB',
-    borderRadius: 10, padding: '14px 18px',
-    fontSize: 13, color: '#0C447C',
-  },
- 
-  /* table section */
-  tableWrap: {
-    background: '#FFFFFF',
-    border: '1px solid #EEECE5',
-    borderRadius: 14, overflow: 'hidden',
-  },
+  badge: (bg, color) => ({ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: bg, color: color, marginTop: 2 }),
+  infoBanner: { display: 'flex', alignItems: 'center', gap: 12, background: '#E6F1FB', border: '1px solid #85B7EB', borderRadius: 10, padding: '14px 18px', fontSize: 13, color: '#0C447C' },
+  tableWrap: { background: '#FFFFFF', border: '1px solid #EEECE5', borderRadius: 14, overflow: 'hidden' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'left', fontSize: 10, fontWeight: 700,
-    color: '#888780', letterSpacing: '0.07em',
-    textTransform: 'uppercase', padding: '13px 18px',
-    borderBottom: '1px solid #EEECE5',
-    background: '#FAFAF8',
-  },
+  th: { textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#888780', letterSpacing: '0.07em', textTransform: 'uppercase', padding: '13px 18px', borderBottom: '1px solid #EEECE5', background: '#FAFAF8' },
   td: { padding: '15px 18px', verticalAlign: 'middle' },
-  docAvatar: (bg, color) => ({
-    width: 36, height: 36, borderRadius: '50%',
-    background: bg, color: color,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 12, fontWeight: 700, flexShrink: 0,
-  }),
-  timeChip: {
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    background: '#F7F6F3', border: '1px solid #D3D1C7',
-    color: '#5F5E5A', borderRadius: 6,
-    padding: '5px 10px', fontSize: 12, fontWeight: 500,
-  },
-  statusPill: (bg, color) => ({
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    padding: '5px 12px', borderRadius: 999,
-    fontSize: 11, fontWeight: 700,
-    background: bg, color: color,
-  }),
-  actionBtn: (bg, color, border) => ({
-    fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
-    padding: '6px 12px', borderRadius: 6,
-    border: `1px solid ${border}`, background: bg, color: color,
-    cursor: 'pointer', transition: 'all 0.12s',
-  }),
-  recordChip: {
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    border: '1px solid #D3D1C7', borderRadius: 6,
-    padding: '4px 8px', fontSize: 11,
-    color: '#5F5E5A', background: '#F7F6F3',
-    maxWidth: 140, marginBottom: 4,
-  },
- 
-  /* toast */
-  toastBase: (isError) => ({
-    position: 'fixed', top: 76, right: 24, zIndex: 9999,
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '13px 18px', borderRadius: 10,
-    fontSize: 13, fontWeight: 600,
-    boxShadow: '0 8px 30px rgba(0,0,0,0.10)',
-    backgroundColor: isError ? '#FCEBEB' : '#E1F5EE',
-    color: isError ? '#A32D2D' : '#085041',
-    border: `1.5px solid ${isError ? '#F09595' : '#5DCAA5'}`,
-    maxWidth: 400,
-    animation: 'slideIn 0.25s ease',
-  }),
- 
-  /* modal overlay */
-  overlay: {
-    position: 'fixed', inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    display: 'flex', justifyContent: 'center', alignItems: 'center',
-    zIndex: 99999,
-  },
-  modal: {
-    background: '#FFFFFF', borderRadius: 16,
-    padding: '36px 40px', width: 420,
-    boxShadow: '0 25px 60px rgba(0,0,0,0.18)',
-    textAlign: 'center',
-  },
-  modalIconWrap: (bg) => ({
-    width: 52, height: 52, borderRadius: '50%',
-    background: bg, display: 'flex',
-    alignItems: 'center', justifyContent: 'center',
-    margin: '0 auto 18px', fontSize: 24,
-  }),
+  docAvatar: (bg, color) => ({ width: 36, height: 36, borderRadius: '50%', background: bg, color: color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }),
+  timeChip: { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#F7F6F3', border: '1px solid #D3D1C7', color: '#5F5E5A', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 500 },
+  statusPill: (bg, color) => ({ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: bg, color: color }),
+  actionBtn: (bg, color, border) => ({ fontFamily: 'inherit', fontSize: 11, fontWeight: 600, padding: '6px 12px', borderRadius: 6, border: `1px solid ${border}`, background: bg, color: color, cursor: 'pointer', transition: 'all 0.12s' }),
+  recordChip: { display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #D3D1C7', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: '#5F5E5A', background: '#F7F6F3', maxWidth: 140, marginBottom: 4 },
+  toastBase: (isError) => ({ position: 'fixed', top: 76, right: 24, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: '0 8px 30px rgba(0,0,0,0.10)', backgroundColor: isError ? '#FCEBEB' : '#E1F5EE', color: isError ? '#A32D2D' : '#085041', border: `1.5px solid ${isError ? '#F09595' : '#5DCAA5'}`, maxWidth: 400, animation: 'slideIn 0.25s ease' }),
+  overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999 },
+  modal: { background: '#FFFFFF', borderRadius: 16, padding: '36px 40px', width: 420, boxShadow: '0 25px 60px rgba(0,0,0,0.18)', textAlign: 'center' },
+  modalIconWrap: (bg) => ({ width: 52, height: 52, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', fontSize: 24 }),
   modalTitle: { margin: '0 0 8px', color: '#2C2C2A', fontSize: 18, fontWeight: 700 },
   modalMsg: { margin: '0 0 22px', color: '#888780', fontSize: 14, lineHeight: 1.6 },
   modalBtnRow: { display: 'flex', gap: 12 },
-  modalBtnCancel: {
-    flex: 1, padding: 11, borderRadius: 10,
-    border: '1px solid #D3D1C7', background: '#FFFFFF',
-    color: '#5F5E5A', fontWeight: 600, cursor: 'pointer',
-    fontSize: 14, fontFamily: 'inherit',
-  },
-  modalBtnConfirm: (isDelete) => ({
-    flex: 1, padding: 11, borderRadius: 10,
-    border: 'none',
-    background: isDelete ? '#A32D2D' : '#0F6E56',
-    color: '#FFFFFF', fontWeight: 700, cursor: 'pointer',
-    fontSize: 14, fontFamily: 'inherit',
-  }),
+  modalBtnCancel: { flex: 1, padding: 11, borderRadius: 10, border: '1px solid #D3D1C7', background: '#FFFFFF', color: '#5F5E5A', fontWeight: 600, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' },
+  modalBtnConfirm: (isDelete) => ({ flex: 1, padding: 11, borderRadius: 10, border: 'none', background: isDelete ? '#A32D2D' : '#0F6E56', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }),
 };
- 
+
 /* ─────────────────────────────────────────────
    STATUS CONFIG HELPER
 ───────────────────────────────────────────── */
@@ -370,7 +140,7 @@ function getStatusStyle(dbStatus) {
   };
   return map[dbStatus] || { bg: '#F7F6F3', color: '#5F5E5A', dot: '#888780', label: dbStatus };
 }
- 
+
 /* avatar bg palette by index */
 const AVATAR_COLORS = [
   { bg: '#E6F1FB', color: '#185FA5' },
@@ -379,51 +149,64 @@ const AVATAR_COLORS = [
   { bg: '#FAEEDA', color: '#854F0B' },
   { bg: '#FAECE7', color: '#993C1D' },
 ];
- 
+
 /* ─────────────────────────────────────────────
    MAIN COMPONENT
 ───────────────────────────────────────────── */
 function PatientDashboard() {
   const token = localStorage.getItem('token');
- 
+
   const [notification, setNotification] = useState({ show: false, message: '', isError: false });
   const [actionModal, setActionModal] = useState({ show: false, type: '', targetId: null, message: '', extraData: null });
- 
+
+  // ── FIX 1: ADD DEPARTMENTS STATE ──
   const [hospitals, setHospitals] = useState([]);
+  const [departments, setDepartments] = useState([]); 
   const [doctors, setDoctors] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [myAppointments, setMyAppointments] = useState([]);
+  
   const [selectedHospital, setSelectedHospital] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
- 
+
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploadAppointmentId, setUploadAppointmentId] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [myRecords, setMyRecords] = useState([]);
- 
+
   const [activeTab, setActiveTab] = useState('ALL');
- 
+  
+  // Patient Search Bar States
+  const [searchDoctorName, setSearchDoctorName] = useState('');
+  const [searchDate, setSearchDate] = useState('');
+
   const today = new Date();
   const minDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const currentTimeString = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
- 
+
   const todayFormatted = today.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
   const userName = localStorage.getItem('userName') || 'Patient';
   const hour = today.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
- 
+
   const showStatusNotification = useCallback((msg, isErr = false) => {
     setNotification({ show: true, message: msg, isError: isErr });
     setTimeout(() => setNotification({ show: false, message: '', isError: false }), 4000);
   }, []);
- 
+
   const loadInitialPatientWorkspace = useCallback(async () => {
     try {
       const overviewRes = await axios.get(`${API_BASE_URL}/system-overview`);
       setHospitals(overviewRes.data.hospitals || []);
+      
+      // ── FIX 2: SAVE DEPARTMENTS FROM BACKEND ──
+      setDepartments(overviewRes.data.departments || []); 
+      
       setDoctors(overviewRes.data.doctors || []);
+      
       const appointmentsRes = await axios.get(`${API_BASE_URL}/patient/appointments`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -439,7 +222,7 @@ function PatientDashboard() {
       console.error('Error setting up patient environment maps.');
     }
   }, [token]);
- 
+
   useEffect(() => {
     loadInitialPatientWorkspace();
     const hasGreeted = sessionStorage.getItem('hasGreeted');
@@ -448,9 +231,22 @@ function PatientDashboard() {
       sessionStorage.setItem('hasGreeted', 'true');
     }
   }, [loadInitialPatientWorkspace, showStatusNotification, userName]);
- 
-  const validFilteredDoctorsList = doctors.filter(doc => doc.hospital_id === parseInt(selectedHospital));
- 
+
+  // ── FIX 3: ROBUST DATABASE CASCADING DROPDOWNS ──
+  // 1. Get doctors in this hospital
+  const hospitalDoctors = doctors.filter(doc => doc.hospital_id === parseInt(selectedHospital));
+  
+  // 2. Find which exact department IDs those doctors belong to
+  const availableDeptIds = [...new Set(hospitalDoctors.map(doc => doc.department_id))];
+  
+  // 3. Display only the Departments that actually exist in this hospital
+  const hospitalDepartments = departments.filter(dep => availableDeptIds.includes(dep.id));
+  
+  // 4. Filter doctors by the selected department ID
+  const validFilteredDoctorsList = hospitalDoctors.filter(doc => 
+    selectedDepartment ? doc.department_id === parseInt(selectedDepartment) : true
+  );
+
   const handleFetchAvailableSlots = async () => {
     if (!selectedDoctor || !filterDate) {
       showStatusNotification('Please select a Doctor and Target Date first.', true);
@@ -471,19 +267,19 @@ function PatientDashboard() {
       showStatusNotification('Failed to collect clinician schedule timelines.', true);
     }
   };
- 
+
   const handleBookSlotClick = (slot) =>
     setActionModal({
       show: true, type: 'BOOK', targetId: slot.id,
       message: `Confirm booking the appointment window from ${slot.start_time} to ${slot.end_time}?`,
     });
- 
+
   const handleCancelClick = (appt) =>
     setActionModal({
       show: true, type: 'CANCEL', targetId: appt.id,
       message: `Are you sure you want to cancel your appointment with ${appt.doctor_name}?`,
     });
- 
+
   const handleDeleteFileClick = (record) => {
     const filePath = record.path || record.id;
     if (!filePath) { showStatusNotification('Error: File path missing. Please refresh.', true); return; }
@@ -492,7 +288,7 @@ function PatientDashboard() {
       message: `Permanently delete "${record.name}"?`,
     });
   };
- 
+
   const handleRescheduleClick = async (appt) => {
     try {
       const res = await axios.get(`${API_BASE_URL}/slots/${appt.doctor_id}?date=${appt.date}`);
@@ -512,7 +308,7 @@ function PatientDashboard() {
       showStatusNotification('Could not retrieve optional timing blocks for rescheduling.', true);
     }
   };
- 
+
   const executeConfirmedAction = async () => {
     const { type, targetId, extraData } = actionModal;
     setActionModal({ show: false, type: '', targetId: null, message: '', extraData: null });
@@ -538,7 +334,7 @@ function PatientDashboard() {
       showStatusNotification(`Error: ${exactError}`, true);
     }
   };
- 
+
   const handleUploadRecords = async () => {
     if (!uploadAppointmentId) { showStatusNotification('Please select an appointment first.', true); return; }
     if (uploadedFiles.length === 0) return;
@@ -560,8 +356,7 @@ function PatientDashboard() {
       setIsUploading(false);
     }
   };
- 
-  /* ── 🧹 Precise Time Logic for "Ghost" Appointments ── */
+
   const isApptActiveAndUpcoming = (a) => {
     if (a.status !== 'SCHEDULED' && a.status !== 'CONFIRMED') return false;
     if (a.date < minDateString) return false;
@@ -572,31 +367,28 @@ function PatientDashboard() {
     return true;
   };
 
-  /* ── derived stats ── */
   const activeCount = myAppointments.filter(isApptActiveAndUpcoming).length;
   const uniqueDoctors = new Set(myAppointments.map(a => a.doctor_id)).size;
   const totalRecords = myRecords.length;
- 
-  /* ── filtered appointments by tab ── */
+
   const filteredAppointments = myAppointments.filter(a => {
-    if (activeTab === 'UPCOMING') return isApptActiveAndUpcoming(a);
-    if (activeTab === 'PAST') return !isApptActiveAndUpcoming(a);
-    return true;
+    if (activeTab === 'UPCOMING' && !isApptActiveAndUpcoming(a)) return false;
+    if (activeTab === 'PAST' && isApptActiveAndUpcoming(a)) return false;
+    const matchName = a.doctor_name.toLowerCase().includes(searchDoctorName.toLowerCase());
+    const matchDate = searchDate === '' || a.date === searchDate;
+    return matchName && matchDate;
   });
- 
-  /* ── next upcoming appointment for banner ── */
+
   const nextAppt = myAppointments.find(isApptActiveAndUpcoming);
- 
-  /* ── input focus style handler ── */
+
   const focusStyle = (e) => { e.target.style.borderColor = '#1D9E75'; e.target.style.background = '#FFFFFF'; };
   const blurStyle  = (e) => { e.target.style.borderColor = '#D3D1C7'; e.target.style.background = '#F7F6F3'; };
- 
+
   /* ─────────────────────────────────────────
      RENDER
   ───────────────────────────────────────── */
   return (
     <div style={S.page}>
-      {/* Google Font import */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
         * { box-sizing: border-box; }
@@ -607,9 +399,9 @@ function PatientDashboard() {
         .btn-primary-hover:hover { background: #085041 !important; }
         .btn-attach-hover:hover { background: #633806 !important; }
       `}</style>
- 
+
       <Navbar />
- 
+
       {/* ── TOAST ── */}
       {notification.show && (
         <div style={S.toastBase(notification.isError)}>
@@ -617,7 +409,7 @@ function PatientDashboard() {
           {notification.message}
         </div>
       )}
- 
+
       {/* ── ACTION MODAL ── */}
       {actionModal.show && (
         <div style={S.overlay}>
@@ -632,7 +424,7 @@ function PatientDashboard() {
             </div>
             <h3 style={S.modalTitle}>Confirm Action</h3>
             <p style={S.modalMsg}>{actionModal.message}</p>
- 
+
             {actionModal.type === 'RESCHEDULE' && (
               <div style={{ marginBottom: 22, textAlign: 'left' }}>
                 <label style={{ ...S.label, marginBottom: 6 }}>Available Alternative Blocks</label>
@@ -653,7 +445,7 @@ function PatientDashboard() {
                 )}
               </div>
             )}
- 
+
             <div style={S.modalBtnRow}>
               <button
                 style={S.modalBtnCancel}
@@ -671,13 +463,13 @@ function PatientDashboard() {
           </div>
         </div>
       )}
- 
+
       {/* ── MAIN GRID ── */}
       <div style={S.layout}>
- 
+
         {/* ════════════ SIDEBAR ════════════ */}
         <aside style={S.sidebar}>
- 
+
           {/* Find & Book */}
           <div>
             <div style={S.sectionLabel}>Find &amp; Book</div>
@@ -692,14 +484,19 @@ function PatientDashboard() {
                 </div>
               </div>
               <div style={S.cardBody}>
- 
+
                 {/* Hospital */}
                 <div style={S.fieldWrap}>
                   <label style={S.label}>Hospital Facility</label>
                   <div style={S.selectWrap}>
                     <select
                       value={selectedHospital}
-                      onChange={e => { setSelectedHospital(e.target.value); setSelectedDoctor(''); setAvailableSlots([]); }}
+                      onChange={e => { 
+                        setSelectedHospital(e.target.value); 
+                        setSelectedDepartment(''); // Reset Department
+                        setSelectedDoctor(''); 
+                        setAvailableSlots([]); 
+                      }}
                       style={{ ...S.input, paddingRight: 32 }}
                       onFocus={focusStyle} onBlur={blurStyle}
                     >
@@ -709,7 +506,31 @@ function PatientDashboard() {
                     <span style={S.selectArrow}><ChevronDown /></span>
                   </div>
                 </div>
- 
+
+                {/* ── FIX 4: DEPARTMENT DROPDOWN UI ── */}
+                <div style={S.fieldWrap}>
+                  <label style={S.label}>Medical Department</label>
+                  <div style={S.selectWrap}>
+                    <select
+                      value={selectedDepartment}
+                      onChange={e => { 
+                        setSelectedDepartment(e.target.value); 
+                        setSelectedDoctor(''); 
+                        setAvailableSlots([]); 
+                      }}
+                      style={{ ...S.input, paddingRight: 32, opacity: !selectedHospital ? 0.6 : 1 }}
+                      disabled={!selectedHospital}
+                      onFocus={focusStyle} onBlur={blurStyle}
+                    >
+                      <option value="">-- All Departments --</option>
+                      {hospitalDepartments.map(dep => (
+                        <option key={dep.id} value={dep.id}>{dep.name}</option>
+                      ))}
+                    </select>
+                    <span style={S.selectArrow}><ChevronDown /></span>
+                  </div>
+                </div>
+
                 {/* Doctor */}
                 <div style={S.fieldWrap}>
                   <label style={S.label}>Specialising Practitioner</label>
@@ -731,7 +552,7 @@ function PatientDashboard() {
                     <span style={S.selectArrow}><ChevronDown /></span>
                   </div>
                 </div>
- 
+
                 {/* Date */}
                 <div style={S.fieldWrap}>
                   <label style={S.label}>Target Consultation Date</label>
@@ -742,7 +563,7 @@ function PatientDashboard() {
                     onFocus={focusStyle} onBlur={blurStyle}
                   />
                 </div>
- 
+
                 <button
                   className="btn-primary-hover"
                   onClick={handleFetchAvailableSlots}
@@ -750,7 +571,7 @@ function PatientDashboard() {
                 >
                   <SearchIcon /> Search Slots
                 </button>
- 
+
                 {/* Slots */}
                 {availableSlots.length > 0 && (
                   <>
@@ -779,7 +600,7 @@ function PatientDashboard() {
               </div>
             </div>
           </div>
- 
+
           {/* Attach Records */}
           <div>
             <div style={S.sectionLabel}>Medical Records</div>
@@ -794,7 +615,7 @@ function PatientDashboard() {
                 </div>
               </div>
               <div style={{ padding: '16px 18px' }}>
- 
+
                 {/* Appointment select */}
                 <div style={S.fieldWrap}>
                   <label style={{ ...S.label, color: '#854F0B' }}>Select Upcoming Appointment</label>
@@ -814,7 +635,7 @@ function PatientDashboard() {
                     <span style={S.selectArrow}><ChevronDown /></span>
                   </div>
                 </div>
- 
+
                 {/* File drop zone */}
                 <div style={S.fileZone}>
                   <div style={{ fontSize: 20, marginBottom: 6 }}>📄</div>
@@ -834,7 +655,7 @@ function PatientDashboard() {
                     />
                   </label>
                 </div>
- 
+
                 <button
                   className={isUploading || uploadedFiles.length === 0 ? '' : 'btn-attach-hover'}
                   onClick={handleUploadRecords}
@@ -847,12 +668,12 @@ function PatientDashboard() {
               </div>
             </div>
           </div>
- 
+
         </aside>
- 
+
         {/* ════════════ MAIN ════════════ */}
         <main style={S.main}>
- 
+
           {/* Page Header */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <div>
@@ -868,7 +689,7 @@ function PatientDashboard() {
               {todayFormatted}
             </div>
           </div>
- 
+
           {/* Stats Row */}
           <div style={S.statsRow}>
             <div style={S.statCard}>
@@ -902,7 +723,7 @@ function PatientDashboard() {
               </div>
             </div>
           </div>
- 
+
           {/* Info Banner */}
           {nextAppt && (
             <div style={S.infoBanner}>
@@ -914,10 +735,10 @@ function PatientDashboard() {
               </div>
             </div>
           )}
- 
+
           {/* Consultations Log */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <span style={{ fontSize: 18, fontWeight: 600, color: '#2C2C2A', letterSpacing: '-0.2px' }}>
                   My Booked Consultations
@@ -926,35 +747,70 @@ function PatientDashboard() {
                   {myAppointments.length} total · {activeCount} active
                 </span>
               </div>
-              {/* Tab pills */}
-              <div style={{
-                display: 'flex', gap: 4,
-                background: '#EEECE5', borderRadius: 8, padding: 3,
-              }}>
-                {['ALL', 'UPCOMING', 'PAST'].map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    style={{
-                      fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
-                      padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                      background: activeTab === tab ? '#FFFFFF' : 'transparent',
-                      color: activeTab === tab ? '#2C2C2A' : '#888780',
-                      boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {tab.charAt(0) + tab.slice(1).toLowerCase()}
-                  </button>
-                ))}
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 15, flexWrap: 'wrap' }}>
+                
+                {/* Doctor Name Search Input */}
+                <input 
+                  type="text"
+                  placeholder="Search doctor..."
+                  value={searchDoctorName}
+                  onChange={(e) => setSearchDoctorName(e.target.value)}
+                  style={{
+                    padding: '7px 12px', borderRadius: '8px', border: '1px solid #D3D1C7',
+                    fontSize: '12px', outline: 'none', background: '#FFFFFF', width: '160px',
+                    fontFamily: 'inherit', transition: 'border-color 0.2s'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#1D9E75'}
+                  onBlur={(e) => e.target.style.borderColor = '#D3D1C7'}
+                />
+
+                {/* Date Search Input */}
+                <input 
+                  type="date"
+                  value={searchDate}
+                  onChange={(e) => setSearchDate(e.target.value)}
+                  style={{
+                    padding: '7px 12px', borderRadius: '8px', border: '1px solid #D3D1C7',
+                    fontSize: '12px', outline: 'none', background: '#FFFFFF', 
+                    fontFamily: 'inherit', transition: 'border-color 0.2s', color: searchDate ? '#2C2C2A' : '#888780'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#1D9E75'}
+                  onBlur={(e) => e.target.style.borderColor = '#D3D1C7'}
+                />
+
+                {/* Tab pills */}
+                <div style={{
+                  display: 'flex', gap: 4,
+                  background: '#EEECE5', borderRadius: 8, padding: 3,
+                }}>
+                  {['ALL', 'UPCOMING', 'PAST'].map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      style={{
+                        fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+                        padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        background: activeTab === tab ? '#FFFFFF' : 'transparent',
+                        color: activeTab === tab ? '#2C2C2A' : '#888780',
+                        boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {tab.charAt(0) + tab.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
- 
+
             <div style={S.tableWrap}>
               {filteredAppointments.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', color: '#888780' }}>
                   <div style={{ fontSize: 36, marginBottom: 12 }}>🗓️</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#5F5E5A', marginBottom: 4 }}>No appointments found</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#5F5E5A', marginBottom: 4 }}>
+                    {(searchDoctorName || searchDate) ? 'No matches found for your search criteria' : 'No appointments found'}
+                  </div>
                   <div style={{ fontSize: 13 }}>Use the booking panel on the left to schedule a consultation</div>
                 </div>
               ) : (
@@ -975,7 +831,12 @@ function PatientDashboard() {
                       const av = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                       const thisRecords = myRecords.filter(r => r.path && r.path.includes(`appt_${appt.id}_`));
                       const initials = appt.doctor_name.replace('Dr. ', '').slice(0, 2).toUpperCase();
- 
+
+                      // ── FIX 5: SHOW TRUE DATABASE DEPARTMENT NAME ──
+                      const docInfo = doctors.find(d => d.id === appt.doctor_id);
+                      const deptInfo = docInfo ? departments.find(dep => dep.id === docInfo.department_id) : null;
+                      const docSpecialty = deptInfo ? deptInfo.name : (docInfo ? docInfo.specialization : 'Specialist');
+
                       return (
                         <tr
                           key={appt.id}
@@ -988,11 +849,11 @@ function PatientDashboard() {
                               <div style={S.docAvatar(av.bg, av.color)}>{initials}</div>
                               <div>
                                 <div style={{ fontWeight: 600, color: '#2C2C2A', fontSize: 13 }}>{appt.doctor_name}</div>
-                                <div style={{ fontSize: 11, color: '#888780', marginTop: 1 }}>General Practice</div>
+                                <div style={{ fontSize: 11, color: '#888780', marginTop: 1 }}>{docSpecialty}</div>
                               </div>
                             </div>
                           </td>
- 
+
                           {/* Date */}
                           <td style={S.td}>
                             <div style={{ fontWeight: 500, color: '#2C2C2A', fontSize: 13 }}>{appt.date}</div>
@@ -1000,7 +861,7 @@ function PatientDashboard() {
                               {new Date(appt.date) >= new Date(minDateString) ? 'Upcoming' : 'Past'}
                             </div>
                           </td>
- 
+
                           {/* Time */}
                           <td style={S.td}>
                             <div style={S.timeChip}>
@@ -1008,7 +869,7 @@ function PatientDashboard() {
                               {appt.start_time} – {appt.end_time}
                             </div>
                           </td>
- 
+
                           {/* Status */}
                           <td style={S.td}>
                             <span style={S.statusPill(st.bg, st.color)}>
@@ -1016,7 +877,7 @@ function PatientDashboard() {
                               {st.label}
                             </span>
                           </td>
- 
+
                           {/* Actions */}
                           <td style={S.td}>
                             {canEdit ? (
@@ -1042,7 +903,7 @@ function PatientDashboard() {
                               </span>
                             )}
                           </td>
- 
+
                           {/* Records */}
                           <td style={S.td}>
                             {thisRecords.length > 0 ? (
@@ -1080,11 +941,11 @@ function PatientDashboard() {
               )}
             </div>
           </div>
- 
+
         </main>
       </div>
     </div>
   );
 }
- 
+
 export default PatientDashboard;

@@ -15,6 +15,10 @@ class User(Base):
     phone = Column(String, unique=True)
     role = Column(String)  # "ADMIN", "PATIENT", or "DOCTOR"
     
+    # ── NEW: PERMANENT STORAGE FOR PASSWORD RESET OTPS ──
+    reset_otp = Column(String, nullable=True)
+    reset_otp_expire = Column(DateTime, nullable=True)
+    
     # cascade="all, delete-orphan" ensures if a user is deleted, their profile is too
     patient_profile = relationship("Patient", back_populates="user", uselist=False, cascade="all, delete-orphan")
     doctor_profile = relationship("Doctor", back_populates="user", uselist=False, cascade="all, delete-orphan")
@@ -101,7 +105,7 @@ class Appointment(Base):
     
     status = Column(String, default="SCHEDULED") 
 
-    # ── NEW: PERMANENT STORAGE FOR DOCTOR'S CLINICAL SUMMARY ──
+    # ── PERMANENT STORAGE FOR DOCTOR'S CLINICAL SUMMARY ──
     appointment_summary = Column(String, nullable=True)
 
     patient = relationship("Patient", back_populates="appointments")

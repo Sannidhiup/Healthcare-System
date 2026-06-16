@@ -92,7 +92,7 @@ function getStatusStyle(status) {
   const map = {
     SCHEDULED:  { bg: '#E1F5EE', color: '#0F6E56', dot: '#1D9E75', label: 'Scheduled'  },
     CONFIRMED:  { bg: '#E1F5EE', color: '#0F6E56', dot: '#1D9E75', label: 'Confirmed'  },
-    ARRIVED:    { bg: '#FAEEDA', color: '#854F0B', dot: '#BA7517', label: 'Arrived'     },
+    ARRIVED:    { bg: '#FAEEDA', color: '#854F0B', dot: '#BA7517', label: 'Arrived'    },
     STARTED:    { bg: '#E6F1FB', color: '#185FA5', dot: '#378ADD', label: 'In Progress' },
     COMPLETED:  { bg: '#EAF3DE', color: '#27500A', dot: '#639922', label: 'Finished'   },
     CANCELLED:  { bg: '#FCEBEB', color: '#A32D2D', dot: '#E24B4A', label: 'Cancelled'  },
@@ -129,6 +129,9 @@ function DoctorDashboard() {
   const chatScrollRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState('ALL');
+  
+  // ── NEW: PATIENT SEARCH BAR STATE ──
+  const [searchQuery, setSearchQuery] = useState(''); 
 
   const showStatusNotification = useCallback((msg, isErr = false) => {
     setNotification({ show: true, message: msg, isError: isErr });
@@ -170,6 +173,16 @@ function DoctorDashboard() {
   }, [chatHistory, isTyping]);
 
   const handleUpdateStatus = async (appointmentId, newStatus) => {
+    const previousSchedule = [...schedule];
+    const previousActive = activeAppointment ? { ...activeAppointment } : null;
+
+    setSchedule(prev => prev.map(appt =>
+      appt.id === appointmentId ? { ...appt, status: newStatus } : appt
+    ));
+    if (activeAppointment && activeAppointment.id === appointmentId) {
+      setActiveAppointment(prev => ({ ...prev, status: newStatus }));
+    }
+
     try {
       await axios.put(
         `${API_BASE_URL}/doctor/appointment/${appointmentId}/status`,
@@ -177,8 +190,9 @@ function DoctorDashboard() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       showStatusNotification('Status successfully updated.');
-      loadDoctorSchedule();
     } catch (err) {
+      setSchedule(previousSchedule);
+      setActiveAppointment(previousActive);
       showStatusNotification(err.response?.data?.detail || 'Failed to update status', true);
     }
   };
@@ -249,11 +263,18 @@ function DoctorDashboard() {
   const inProgress = schedule.filter(a => a.status === 'STARTED' || a.status === 'ARRIVED').length;
   const finished   = schedule.filter(a => a.status === 'COMPLETED').length;
 
+  // ── FIX: FILTER BY TABS AND SEARCH BAR STRING SIMULTANEOUSLY ──
   const filteredSchedule = schedule.filter(a => {
-    if (activeTab === 'TODAY')    return a.date === todayISO;
-    if (activeTab === 'ACTIVE')   return ['SCHEDULED','CONFIRMED','ARRIVED','STARTED'].includes(a.status);
-    if (activeTab === 'FINISHED') return a.status === 'COMPLETED' || a.status === 'CANCELLED';
-    return true;
+    // 1. Check if it matches the current Tab
+    let matchesTab = true;
+    if (activeTab === 'TODAY')    matchesTab = a.date === todayISO;
+    if (activeTab === 'ACTIVE')   matchesTab = ['SCHEDULED','CONFIRMED','ARRIVED','STARTED'].includes(a.status);
+    if (activeTab === 'FINISHED') matchesTab = a.status === 'COMPLETED' || a.status === 'CANCELLED';
+    
+    // 2. Check if the patient name matches the search box
+    const matchesSearch = a.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return matchesTab && matchesSearch;
   });
 
   const focusStyle = e => { e.target.style.borderColor = '#1D9E75'; e.target.style.background = '#FFFFFF'; };
@@ -406,7 +427,7 @@ function DoctorDashboard() {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:28 }}>
           {[
             { icon:<CalendarIcon size={17}/>, value:scheduled,  label:'Scheduled Today',  iconBg:'#E1F5EE', iconColor:'#0F6E56', badge:'Upcoming',    badgeBg:'#E1F5EE', badgeColor:'#27500A' },
-            { icon:<UserIcon size={17}/>,     value:inProgress, label:'In Progress',       iconBg:'#E6F1FB', iconColor:'#185FA5', badge:'Active now',   badgeBg:'#E6F1FB', badgeColor:'#0C447C' },
+            { icon:<UserIcon size={17}/>,     value:inProgress, label:'In Progress',      iconBg:'#E6F1FB', iconColor:'#185FA5', badge:'Active now',  badgeBg:'#E6F1FB', badgeColor:'#0C447C' },
             { icon:<CheckIcon/>,              value:finished,   label:'Consultations Done',iconBg:'#EAF3DE', iconColor:'#27500A', badge:'Completed',    badgeBg:'#EAF3DE', badgeColor:'#27500A' },
             { icon:<NoteIcon size={17}/>,     value:schedule.length, label:'Total Appointments',iconBg:'#FAEEDA', iconColor:'#854F0B', badge:'All time', badgeBg:'#FAEEDA', badgeColor:'#854F0B' },
           ].map((s, i) => (
@@ -427,7 +448,7 @@ function DoctorDashboard() {
         <div style={{ background:'#FFFFFF', border:'1px solid #EEECE5', borderRadius:14, overflow:'hidden', marginBottom:28 }}>
 
           {/* Card header */}
-          <div style={{ padding:'18px 28px', borderBottom:'1px solid #EEECE5', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ padding:'18px 28px', borderBottom:'1px solid #EEECE5', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'12px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <div style={{ width:36, height:36, borderRadius:8, background:'#E1F5EE', color:'#0F6E56', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <StethIcon />
@@ -437,24 +458,44 @@ function DoctorDashboard() {
                 <div style={{ fontSize:12, color:'#888780', marginTop:2 }}>Update live status, write summaries, and chat with AI</div>
               </div>
             </div>
-            {/* Tab pills */}
-            <div style={{ display:'flex', gap:4, background:'#EEECE5', borderRadius:8, padding:3 }}>
-              {['ALL','TODAY','ACTIVE','FINISHED'].map(tab => (
-                <button
-                  key={tab}
-                  className="tab-btn"
-                  onClick={() => setActiveTab(tab)}
-                  style={{
-                    fontFamily:'inherit', fontSize:11, fontWeight:600,
-                    padding:'5px 12px', borderRadius:6, border:'none', cursor:'pointer',
-                    background: activeTab === tab ? '#FFFFFF' : 'transparent',
-                    color: activeTab === tab ? '#2C2C2A' : '#888780',
-                    boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                  }}
-                >
-                  {tab.charAt(0) + tab.slice(1).toLowerCase()}
-                </button>
-              ))}
+
+            {/* ── NEW: SEARCH AND TABS WRAPPER ── */}
+            <div style={{ display:'flex', alignItems:'center', gap:15, flexWrap:'wrap' }}>
+              
+              {/* Search Bar */}
+              <input 
+                type="text"
+                placeholder="Search patient name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  padding: '8px 14px', borderRadius: '8px', border: '1px solid #D3D1C7',
+                  fontSize: '13px', outline: 'none', background: '#F7F6F3', width: '220px',
+                  fontFamily: 'inherit', transition: 'border-color 0.2s'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#1D9E75'}
+                onBlur={(e) => e.target.style.borderColor = '#D3D1C7'}
+              />
+
+              {/* Tab pills */}
+              <div style={{ display:'flex', gap:4, background:'#EEECE5', borderRadius:8, padding:3 }}>
+                {['ALL','TODAY','ACTIVE','FINISHED'].map(tab => (
+                  <button
+                    key={tab}
+                    className="tab-btn"
+                    onClick={() => setActiveTab(tab)}
+                    style={{
+                      fontFamily:'inherit', fontSize:11, fontWeight:600,
+                      padding:'5px 12px', borderRadius:6, border:'none', cursor:'pointer',
+                      background: activeTab === tab ? '#FFFFFF' : 'transparent',
+                      color: activeTab === tab ? '#2C2C2A' : '#888780',
+                      boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    }}
+                  >
+                    {tab.charAt(0) + tab.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -462,7 +503,9 @@ function DoctorDashboard() {
           {filteredSchedule.length === 0 ? (
             <div style={{ textAlign:'center', padding:'60px 20px', color:'#888780' }}>
               <div style={{ fontSize:36, marginBottom:12 }}>☕</div>
-              <div style={{ fontSize:14, fontWeight:600, color:'#5F5E5A', marginBottom:4 }}>No appointments found</div>
+              <div style={{ fontSize:14, fontWeight:600, color:'#5F5E5A', marginBottom:4 }}>
+                {searchQuery ? `No patients matching "${searchQuery}"` : 'No appointments found'}
+              </div>
               <div style={{ fontSize:13 }}>Your schedule is clear for this view.</div>
             </div>
           ) : (

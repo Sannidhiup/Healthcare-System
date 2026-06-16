@@ -13,7 +13,10 @@ from supabase import create_client, Client
 import os
 import uuid
 import re
+import random
 from dotenv import load_dotenv
+from datetime import timezone
+from twilio.rest import Client
 
 # Load the environment variables from the .env file
 load_dotenv()
@@ -107,6 +110,14 @@ class StatusUpdateRequest(BaseModel):
 class SummaryRequest(BaseModel):
     summary: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
 @app.get("/")
 def home():
     return {"message": "Hospital Management System API v3 (AI Integrated) is Online"}
@@ -168,6 +179,76 @@ def login(data: schemas.LoginSchema, db: Session = Depends(get_db)):
             response_data["extra_info"] = f"{d_name} | {h_name}"
 
     return response_data
+
+@app.post("/forgot-password")
+def request_password_reset(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    
+    if not user or user.role != "PATIENT":
+        return {"message": "If a patient account exists for this email, an OTP has been sent."}
+    
+    # 1. Generate the OTP and Expiration
+    otp_code = str(random.randint(100000, 999999))
+    from datetime import timezone
+    expiration = datetime.now(timezone.utc) + timedelta(minutes=10)
+    
+    # 2. Save to Database
+    user.reset_otp = otp_code
+    user.reset_otp_expire = expiration
+    db.commit()
+    
+    # ==========================================
+    # 3. REAL TWILIO SMS INTEGRATION
+    # ==========================================
+    # Replace these with your actual Twilio console details
+    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_SID")
+    TWILIO_AUTH_TOKEN = os.getenv("TWILIO_TOKEN")
+    TWILIO_PHONE_NUMBER = "+18604078159" # Your Twilio virtual number
+    
+    try:
+        # Twilio requires country codes. If your DB numbers don't have +91, we add it here.
+        patient_phone = str(user.phone)
+        if not patient_phone.startswith("+"):
+            patient_phone = f"+91{patient_phone}" # Change +91 if not in India
+            
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        
+        message = client.messages.create(
+            body=f"Your Hospital Portal secure password reset code is: {otp_code}. Do not share this with anyone.",
+            from_=TWILIO_PHONE_NUMBER,
+            to=patient_phone
+        )
+        print(f"✅ Real SMS successfully sent to {patient_phone}. Twilio Message ID: {message.sid}")
+        
+    except Exception as e:
+        print(f"❌ Twilio Failed to send SMS: {e}")
+        # We don't crash the server here, just log the error so the user doesn't get a scary 500 error screen.
+    
+    return {"message": "If a patient account exists for this email, an OTP has been sent."}
+
+@app.post("/reset-password")
+def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    
+    if not user or user.role != "PATIENT":
+        raise HTTPException(status_code=400, detail="Invalid request.")
+        
+    if user.reset_otp != req.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP code.")
+        
+    if not user.reset_otp_expire or datetime.now(timezone.utc) > user.reset_otp_expire:
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+        
+    # Validation passed -> Update password
+    user.password = hash_password(req.new_password)
+    
+    # Burn the OTP
+    user.reset_otp = None
+    user.reset_otp_expire = None
+    
+    db.commit()
+    return {"message": "Password successfully reset!"}
+
 
 # =========================================================
 # ---------------- INFRASTRUCTURE APIs ---------------- #
@@ -585,6 +666,7 @@ def get_patient_bookings_synchronized(db: Session = Depends(get_db), current_use
         })
 
     return results
+
 # =========================================================
 # ---- HELPER: EXTRACT & EMBED PDF (AI DATA PIPELINE) ----
 # =========================================================
