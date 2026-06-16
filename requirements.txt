@@ -10,3 +10,4 @@ python-dotenv
 twilio
 google-generativeai
 pypdf
+email-validator
