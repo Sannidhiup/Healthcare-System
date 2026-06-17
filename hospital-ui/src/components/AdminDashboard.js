@@ -19,6 +19,10 @@ function AdminDashboard() {
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [activeSlots, setActiveSlots] = useState([]);
+  
+  // NEW: State for Patients
+  const [patients, setPatients] = useState([]);
+  const [patientEditModal, setPatientEditModal] = useState({ show: false, data: null });
 
   const [docId, setDocId] = useState('');
   const [viewDate, setViewDate] = useState('');
@@ -42,7 +46,19 @@ function AdminDashboard() {
     } catch (err) { console.error("Error fetching data from system-overview"); }
   };
 
-  useEffect(() => { loadSystemData(); }, []);
+  // NEW: Load Patients function
+  const loadPatients = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/admin/patients`, { headers: { Authorization: `Bearer ${token}` } });
+      setPatients(res.data || []);
+    } catch (err) { console.error("Error fetching patient data"); }
+  };
+
+  useEffect(() => {
+    loadSystemData();
+    loadPatients(); // Load patients on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addSlotRow = () => setSlots([...slots, { date: '', start_time: '', end_time: '' }]);
   const removeSlotRow = (index) => setSlots(slots.filter((_, i) => i !== index));
@@ -137,6 +153,24 @@ function AdminDashboard() {
       else { await axios.post(`${API_BASE_URL}/doctors`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name} integrated into active directory.`); }
       setDocForm({ id: null, name: '', email: '', password: '', phone: '', specialization: '', years_of_experience: '', hospital_id: '', department_id: '' }); loadSystemData();
     } catch { showStatusNotification("Personnel sync validation rejected.", true); }
+  };
+
+  // NEW: Handle Patient Edit Submission
+  const handlePatientSubmit = async (e) => {
+    e.preventDefault();
+    const pData = patientEditModal.data;
+    try {
+      await axios.put(`${API_BASE_URL}/admin/patients/${pData.user_id}`, {
+        name: pData.name,
+        phone: pData.phone,
+        age: parseInt(pData.age),
+        blood_group: pData.blood_group
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      
+      showStatusNotification(`Patient ${pData.name} updated successfully.`);
+      setPatientEditModal({ show: false, data: null });
+      loadPatients(); // Refresh list to show new data
+    } catch { showStatusNotification("Failed to update patient details.", true); }
   };
 
   /* ─── DEPT COLOR HELPER ─── */
@@ -257,18 +291,86 @@ function AdminDashboard() {
         </div>
       )}
 
+      {/* ── PATIENT EDIT MODAL ── */}
+      {patientEditModal.show && (
+        <div style={{
+          position:'fixed', inset:0, backgroundColor:'rgba(11,29,58,0.55)',
+          display:'flex', justifyContent:'center', alignItems:'center',
+          zIndex:99999, backdropFilter:'blur(4px)',
+        }}>
+          <div style={{
+            background:'white', borderRadius:20, padding:'32px',
+            width:'100%', maxWidth:440, boxShadow:'0 25px 60px rgba(0,0,0,0.18)',
+          }}>
+            <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:24}}>
+              <div style={{width:44, height:44, borderRadius:12, background:'#FCE7F3', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                <i className="ti ti-user-edit" style={{fontSize:22, color:'#EC4899'}} />
+              </div>
+              <div>
+                <h3 style={{margin:0, color:'#0B1D3A', fontSize:18, fontWeight:700}}>Edit Patient Profile</h3>
+                <p style={{margin:0, color:'#6B7280', fontSize:12, marginTop:2}}>Update database record for {patientEditModal.data?.name}</p>
+              </div>
+            </div>
+
+            <form onSubmit={handlePatientSubmit}>
+              <div style={S.fieldWrap}>
+                <label style={S.label}>Full Name</label>
+                <input type="text" required
+                  value={patientEditModal.data.name} 
+                  onChange={e => setPatientEditModal({ ...patientEditModal, data: { ...patientEditModal.data, name: e.target.value } })} 
+                  style={S.input} />
+              </div>
+              <div style={S.fieldWrap}>
+                <label style={S.label}>Phone Number</label>
+                <input type="text" required
+                  value={patientEditModal.data.phone} 
+                  onChange={e => setPatientEditModal({ ...patientEditModal, data: { ...patientEditModal.data, phone: e.target.value } })} 
+                  style={S.input} />
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24}}>
+                <div style={S.fieldWrap}>
+                  <label style={S.label}>Age</label>
+                  <input type="number" required
+                    value={patientEditModal.data.age} 
+                    onChange={e => setPatientEditModal({ ...patientEditModal, data: { ...patientEditModal.data, age: e.target.value } })} 
+                    style={S.input} />
+                </div>
+                <div style={S.fieldWrap}>
+                  <label style={S.label}>Blood Group</label>
+                  <input type="text" required
+                    value={patientEditModal.data.blood_group} 
+                    onChange={e => setPatientEditModal({ ...patientEditModal, data: { ...patientEditModal.data, blood_group: e.target.value } })} 
+                    style={S.input} />
+                </div>
+              </div>
+              <div style={{display:'flex', gap:12}}>
+                <button type="button" 
+                  onClick={() => setPatientEditModal({ show:false, data:null })}
+                  style={{...S.btnCancel, flex:1, margin:0}}>
+                  Cancel
+                </button>
+                <button type="submit" style={{...S.btnPrimary, flex:1, margin:0, background:'linear-gradient(135deg,#DB2777,#EC4899)'}}>
+                  <i className="ti ti-device-floppy" /> Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── TAB BAR ── */}
       <div style={{
         background:'white', borderBottom:'1px solid #DDE4F0',
-        padding:'0 28px', display:'flex', gap:2,
+        padding:'0 28px', display:'flex', gap:2, overflowX:'auto',
         boxShadow:'0 1px 6px rgba(11,29,58,0.06)',
         position:'sticky', top:0, zIndex:90,
       }}>
         {[
-          { key:'slots',       icon:'ti-calendar-time',     label:'Doctor Slot Entries',     accent:'#3B82F6' },
-          { key:'hospitals',   icon:'ti-building-hospital', label:'Hospitals Onboarding',    accent:'#10B981' },
-          { key:'departments', icon:'ti-folders',           label:'Departments Onboarding',  accent:'#F59E0B' },
-          { key:'doctors',     icon:'ti-stethoscope',       label:'Doctors Directory',       accent:'#8B5CF6' },
+          { key:'slots',       icon:'ti-calendar-time',     label:'Doctor Slot Entries',    accent:'#3B82F6' },
+          { key:'hospitals',   icon:'ti-building-hospital', label:'Hospitals Onboarding',   accent:'#10B981' },
+          { key:'departments', icon:'ti-folders',           label:'Departments Onboarding', accent:'#F59E0B' },
+          { key:'doctors',     icon:'ti-stethoscope',       label:'Doctors Directory',      accent:'#8B5CF6' },
+          { key:'patients',    icon:'ti-users-group',       label:'Patient Management',     accent:'#EC4899' }, // NEW TAB
         ].map(t => (
           <button key={t.key} className="cc-tab-btn"
             onClick={() => setActiveTab(t.key)}
@@ -866,7 +968,7 @@ function AdminDashboard() {
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead>
                       <tr style={{background:'#F8FAFF'}}>
-                        {['ID','Doctor','Specialization','Exp','Hosp ID','Dept ID','Actions'].map(h => (
+                        {['ID','Doctor','Contact Info','Specialization','Exp','Hosp / Dept','Actions'].map(h => (
                           <th key={h} style={S.th}>{h}</th>
                         ))}
                       </tr>
@@ -886,6 +988,13 @@ function AdminDashboard() {
                               </div>
                             </div>
                           </td>
+                          {/* NEW CONTACT INFO CELL */}
+                          <td style={S.td}>
+                            <div style={{fontSize:12, color:'#4A5568'}}>
+                              <div style={{fontWeight:600}}>{d.email}</div>
+                              <div>{d.phone}</div>
+                            </div>
+                          </td>
                           <td style={S.td}>
                             <span style={{background:'#EFF6FF',color:'#2563EB',borderRadius:20,fontSize:12,fontWeight:600,padding:'3px 10px',border:'1px solid #BFDBFE'}}>
                               {d.specialization}
@@ -895,8 +1004,11 @@ function AdminDashboard() {
                             <span style={{fontWeight:600,color:'#0B1D3A'}}>{d.years_of_experience}</span>
                             <span style={{fontSize:11,color:'#8896AC'}}> Yrs</span>
                           </td>
-                          <td style={S.td}><span style={S.idChip}>{d.hospital_id}</span></td>
-                          <td style={S.td}><span style={S.idChip}>{d.department_id}</span></td>
+                          <td style={S.td}>
+                            <div style={{fontSize:12, color:'#4A5568', fontWeight:600}}>
+                              H: <span style={S.idChip}>{d.hospital_id}</span> D: <span style={S.idChip}>{d.department_id}</span>
+                            </div>
+                          </td>
                           <td style={S.td}>
                             <div style={{display:'flex',gap:6}}>
                               <button className="cc-btn-edit" onClick={() => setDocForm(d)} style={S.btnEdit}>Edit</button>
@@ -913,6 +1025,80 @@ function AdminDashboard() {
                   <div style={{background:'#F8FAFF',padding:'10px 14px',fontSize:12,color:'#8896AC',borderTop:'1px solid #DDE4F0',display:'flex',alignItems:'center',gap:6}}>
                     <i className="ti ti-stethoscope" style={{fontSize:13}} />
                     Showing <span style={{background:'white',border:'1px solid #DDE4F0',borderRadius:10,padding:'2px 8px',fontWeight:600,color:'#4A5568',fontSize:11,margin:'0 2px'}}>{doctors.length}</span> practitioners
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════════════════════
+            TAB 5 — PATIENT MANAGEMENT
+        ════════════════════════════════ */}
+        {activeTab === 'patients' && (
+          <div className="cc-panel" style={{display:'grid',gridTemplateColumns:'1fr',gap:24}}>
+            <div style={S.card}>
+              <div style={S.cardHead('#FDF2F8','#EC4899')}>
+                <div style={{...S.headIcon, background:'#FCE7F3'}}>
+                  <i className="ti ti-users-group" style={{fontSize:18,color:'#EC4899'}} />
+                </div>
+                <div>
+                  <div style={S.cardTitle}>Patient Management</div>
+                  <div style={S.cardSub}>{patients.length} patients registered in the system</div>
+                </div>
+              </div>
+              <div style={S.cardBody}>
+                <div style={{borderRadius:12,border:'1px solid #DDE4F0',overflow:'hidden'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{background:'#F8FAFF'}}>
+                        {['ID', 'Patient Name', 'Contact Info', 'Age', 'Blood Group', 'Actions'].map(h => (
+                          <th key={h} style={S.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {patients.map(p => (
+                        <tr key={p.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
+                          <td style={S.td}><span style={S.idChip}>{p.id}</span></td>
+                          <td style={S.td}>
+                            <div style={{display:'flex',alignItems:'center',gap:9}}>
+                              <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#EC4899,#BE185D)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',flexShrink:0}}>
+                                {p.name.slice(0,2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{fontWeight:700,color:'#0B1D3A',fontSize:13}}>{p.name}</div>
+                                <div style={{fontSize:11,color:'#8896AC'}}>User ID: {p.user_id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={S.td}>
+                            <div style={{fontSize:12, color:'#4A5568'}}>
+                              <div style={{fontWeight:600}}>{p.email}</div>
+                              <div>{p.phone}</div>
+                            </div>
+                          </td>
+                          <td style={S.td}><span style={{fontWeight:600,color:'#0B1D3A'}}>{p.age}</span></td>
+                          <td style={S.td}>
+                            <span style={{background:'#FEF2F2',color:'#DC2626',borderRadius:20,fontSize:12,fontWeight:700,padding:'3px 10px',border:'1px solid #FECACA'}}>
+                              {p.blood_group}
+                            </span>
+                          </td>
+                          <td style={S.td}>
+                            <button className="cc-btn-edit" onClick={() => setPatientEditModal({ show: true, data: { ...p } })} style={{...S.btnEdit, color:'#DB2777', background:'#FCE7F3', border:'1px solid #FBCFE8'}}>
+                              <i className="ti ti-edit" /> Edit Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {patients.length === 0 && (
+                        <tr><td colSpan={6} style={{textAlign:'center',color:'#8896AC',padding:'36px 0',fontSize:13}}>No patients registered yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div style={{background:'#F8FAFF',padding:'10px 14px',fontSize:12,color:'#8896AC',borderTop:'1px solid #DDE4F0',display:'flex',alignItems:'center',gap:6}}>
+                    <i className="ti ti-users-group" style={{fontSize:13}} />
+                    Showing <span style={{background:'white',border:'1px solid #DDE4F0',borderRadius:10,padding:'2px 8px',fontWeight:600,color:'#4A5568',fontSize:11,margin:'0 2px'}}>{patients.length}</span> patients
                   </div>
                 </div>
               </div>

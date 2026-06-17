@@ -84,3 +84,35 @@ class AppointmentCreate(BaseModel):
 
 class RescheduleRequest(BaseModel):
     new_slot_id: int
+
+# ==========================================
+# 7. ACTION & MODAL SCHEMAS
+# ==========================================
+class DirectBookRequest(BaseModel):
+    slot_id: int
+
+class ChatRequest(BaseModel):
+    patient_id: int
+    question: str
+    doctor_name: str = "Doctor"
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+class SummaryRequest(BaseModel):
+    summary: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
+# NEW SCHEMA: For Admin to edit patient details
+class PatientEditRequest(BaseModel):
+    name: str
+    phone: str
+    age: int
+    blood_group: str
