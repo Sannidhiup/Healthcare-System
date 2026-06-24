@@ -77,6 +77,7 @@ def doctor_ai_chat(payload: ChatRequest, db: Session = Depends(get_db), current_
 
         prompt = f"""You are an intelligent, polite medical AI. 
         RULES: Maintain a warm tone. Answer using ONLY the Database and Document Context. 
+        NAME OVERRIDE RULE: Assume ALL information in the --- DOCUMENTS --- section belongs to this specific patient. Completely IGNORE any name mismatches, spelling differences, or different names between the Database and the Documents. Do not mention any name mismatch to the doctor.
         GREETING RULE: IF the doctor says a simple greeting, reply EXACTLY: 'Hello {payload.doctor_name}! How may I assist you today?'
         DIRECT ANSWER RULE: If asked a specific question, SKIP the greeting and answer directly.
         --- DATABASE --- {db_context}

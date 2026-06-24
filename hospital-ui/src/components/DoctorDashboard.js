@@ -84,6 +84,22 @@ const ChevronDown = () => (
     <polyline points="6 9 12 15 18 9"/>
   </svg>
 );
+// NEW: Dictation Icons
+const MicIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+    <line x1="12" y1="19" x2="12" y2="22"></line>
+  </svg>
+);
+const MicOffIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1" y1="1" x2="23" y2="23"></line>
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.88"></path>
+    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+    <line x1="12" y1="19" x2="12" y2="22"></line>
+  </svg>
+);
 
 /* ─────────────────────────────────────────────
    STATUS CONFIG
@@ -129,14 +145,62 @@ function DoctorDashboard() {
   const chatScrollRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState('ALL');
-  
-  // ── NEW: PATIENT SEARCH BAR STATE ──
   const [searchQuery, setSearchQuery] = useState(''); 
+
+  // ── NEW: SPEECH RECOGNITION STATE & REF ──
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
 
   const showStatusNotification = useCallback((msg, isErr = false) => {
     setNotification({ show: true, message: msg, isError: isErr });
     setTimeout(() => setNotification({ show: false, message: '', isError: false }), 4000);
   }, []);
+
+  // ── NEW: SPEECH RECOGNITION INITIALIZATION ──
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition && !recognitionRef.current) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+
+      recognitionRef.current.onresult = (event) => {
+        let currentTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          currentTranscript += event.results[i][0].transcript;
+        }
+        setChatInput(currentTranscript);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech Recognition Error: ", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  // ── NEW: TOGGLE DICTATION ──
+  const toggleListening = (e) => {
+    e.preventDefault();
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showStatusNotification("Your browser doesn't support voice dictation. Please use Chrome.", true);
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      setChatInput(''); // Clear input before fresh dictation
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
 
   const loadDoctorSchedule = useCallback(async () => {
     try {
@@ -222,6 +286,13 @@ function DoctorDashboard() {
   const handleSendChatMessage = async (e) => {
     e?.preventDefault();
     if (!chatInput.trim()) return;
+
+    // Turn off microphone if it was listening
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+
     const userMessage = chatInput.trim();
     setChatInput('');
     setChatHistory(prev => [...prev, { sender: 'doctor', text: userMessage }]);
@@ -263,15 +334,12 @@ function DoctorDashboard() {
   const inProgress = schedule.filter(a => a.status === 'STARTED' || a.status === 'ARRIVED').length;
   const finished   = schedule.filter(a => a.status === 'COMPLETED').length;
 
-  // ── FIX: FILTER BY TABS AND SEARCH BAR STRING SIMULTANEOUSLY ──
   const filteredSchedule = schedule.filter(a => {
-    // 1. Check if it matches the current Tab
     let matchesTab = true;
     if (activeTab === 'TODAY')    matchesTab = a.date === todayISO;
     if (activeTab === 'ACTIVE')   matchesTab = ['SCHEDULED','CONFIRMED','ARRIVED','STARTED'].includes(a.status);
     if (activeTab === 'FINISHED') matchesTab = a.status === 'COMPLETED' || a.status === 'CANCELLED';
     
-    // 2. Check if the patient name matches the search box
     const matchesSearch = a.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
     
     return matchesTab && matchesSearch;
@@ -334,7 +402,10 @@ function DoctorDashboard() {
                 </div>
               </div>
               <button
-                onClick={() => setAiModal({ show:false, patientId:null, patientName:'' })}
+                onClick={() => {
+                  setAiModal({ show:false, patientId:null, patientName:'' });
+                  if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
+                }}
                 style={{ background:'rgba(255,255,255,0.15)', border:'none', width:32, height:32, borderRadius:'50%', color:'#FFFFFF', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
               >
                 <XIcon />
@@ -378,13 +449,38 @@ function DoctorDashboard() {
 
             {/* Chat input */}
             <form onSubmit={handleSendChatMessage} style={{ padding:'14px 18px', background:'#FFFFFF', borderTop:'1px solid #EEECE5', display:'flex', gap:10 }}>
+              
+              {/* ── NEW: DICTATION BUTTON ── */}
+              <button
+                onClick={toggleListening}
+                type="button"
+                title={isListening ? "Stop Listening" : "Dictate Symptoms"}
+                style={{
+                  background: isListening ? '#FCEBEB' : '#F7F6F3',
+                  color: isListening ? '#A32D2D' : '#5F5E5A',
+                  border: `1px solid ${isListening ? '#F09595' : '#D3D1C7'}`,
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all .15s',
+                  animation: isListening ? 'pulse 1.5s infinite' : 'none'
+                }}
+              >
+                {isListening ? <MicOffIcon /> : <MicIcon />}
+              </button>
+
               <input
                 className="chat-input"
                 type="text"
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
-                placeholder="Ask about diagnoses, blood pressure, past records…"
-                style={{ flex:1, padding:'10px 16px', borderRadius:24, border:'1px solid #D3D1C7', fontSize:13, background:'#F7F6F3', color:'#2C2C2A', fontFamily:'inherit', transition:'border-color .15s' }}
+                placeholder={isListening ? "Listening..." : "Ask about diagnoses, blood pressure..."}
+                style={{ flex:1, padding:'10px 16px', borderRadius:24, border:`1px solid ${isListening ? '#F09595' : '#D3D1C7'}`, fontSize:13, background: isListening ? '#FFFFFF' : '#F7F6F3', color:'#2C2C2A', fontFamily:'inherit', transition:'all .15s' }}
               />
               <button
                 type="submit"
@@ -459,7 +555,6 @@ function DoctorDashboard() {
               </div>
             </div>
 
-            {/* ── NEW: SEARCH AND TABS WRAPPER ── */}
             <div style={{ display:'flex', alignItems:'center', gap:15, flexWrap:'wrap' }}>
               
               {/* Search Bar */}

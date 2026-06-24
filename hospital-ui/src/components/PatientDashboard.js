@@ -309,19 +309,23 @@ function PatientDashboard() {
     }
   };
 
+  // ── THE CRITICAL FIX: UPDATED BACKEND ROUTES ──
   const executeConfirmedAction = async () => {
     const { type, targetId, extraData } = actionModal;
     setActionModal({ show: false, type: '', targetId: null, message: '', extraData: null });
     try {
       if (type === 'BOOK') {
-        await axios.post(`${API_BASE_URL}/appointments/book`, { slot_id: targetId }, { headers: { Authorization: `Bearer ${token}` } });
+        // Updated to /patient/book
+        await axios.post(`${API_BASE_URL}/patient/book`, { slot_id: targetId }, { headers: { Authorization: `Bearer ${token}` } });
         showStatusNotification('Appointment confirmed successfully.');
       } else if (type === 'CANCEL') {
-        await axios.put(`${API_BASE_URL}/appointments/cancel/${targetId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        // Updated to /patient/cancel/
+        await axios.put(`${API_BASE_URL}/patient/cancel/${targetId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
         showStatusNotification('Appointment cancelled.');
       } else if (type === 'RESCHEDULE') {
         if (!extraData) { showStatusNotification('No new slot selected.', true); return; }
-        await axios.put(`${API_BASE_URL}/appointments/reschedule/${targetId}`, { new_slot_id: parseInt(extraData) }, { headers: { Authorization: `Bearer ${token}` } });
+        // Updated to /patient/reschedule/
+        await axios.put(`${API_BASE_URL}/patient/reschedule/${targetId}`, { new_slot_id: parseInt(extraData) }, { headers: { Authorization: `Bearer ${token}` } });
         showStatusNotification('Appointment rescheduled successfully.');
       } else if (type === 'DELETE_FILE') {
         await axios.delete(`${API_BASE_URL}/patient/document?file_path=${encodeURIComponent(targetId)}`, { headers: { Authorization: `Bearer ${token}` } });
