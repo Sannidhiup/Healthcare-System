@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as date_type
 import os
@@ -84,7 +85,21 @@ def doctor_ai_chat(payload: ChatRequest, db: Session = Depends(get_db), current_
         --- DOCUMENTS --- {pdf_context}
         Doctor's Input: {payload.question}"""
 
-        return {"answer": chat_model.generate_content(prompt).text}
+        # Define the streaming generator
+        def generate_response():
+            try:
+                # stream=True triggers the continuous output pipeline
+                response = chat_model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+            except Exception as stream_error:
+                print(f"Streaming Error: {stream_error}")
+                yield "An error occurred while generating the response stream."
+
+        # Return the generator wrapped in a StreamingResponse
+        return StreamingResponse(generate_response(), media_type="text/plain")
+        
     except Exception as e:
         print(f"AI Error: {e}")
         raise HTTPException(500, "AI Assistant error.")

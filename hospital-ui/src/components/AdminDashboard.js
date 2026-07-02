@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
 
@@ -20,45 +20,106 @@ function AdminDashboard() {
   const [doctors, setDoctors] = useState([]);
   const [activeSlots, setActiveSlots] = useState([]);
   
-  // NEW: State for Patients
   const [patients, setPatients] = useState([]);
   const [patientEditModal, setPatientEditModal] = useState({ show: false, data: null });
 
   const [docId, setDocId] = useState('');
+  const [selectedDoctorData, setSelectedDoctorData] = useState(null);
   const [viewDate, setViewDate] = useState('');
   const [slots, setSlots] = useState([{ date: '', start_time: '', end_time: '' }]);
   const [leftSearchQuery, setLeftSearchQuery] = useState('');
   const [rightSearchQuery, setRightSearchQuery] = useState('');
 
+  const [slotFilterHospitalId, setSlotFilterHospitalId] = useState('');
+  const [slotFilterDepartmentId, setSlotFilterDepartmentId] = useState('');
+
   const [hospForm, setHospForm] = useState({ id: null, name: '', location: '' });
   const [deptForm, setDeptForm] = useState({ id: null, name: '', hospital_id: '' });
-  const [docForm, setDocForm] = useState({ id: null, name: '', email: '', password: '', phone: '', specialization: '', years_of_experience: '', hospital_id: '', department_id: '' });
+  const [docForm, setDocForm] = useState({ 
+    id: null, name: '', email: '', password: '', phone: '', 
+    specialization: '', years_of_experience: '', hospital_id: '', department_ids: [] 
+  });
 
   const [bulkHospitalsInput, setBulkHospitalsInput] = useState('');
   const [bulkDepartmentsInput, setBulkDepartmentsInput] = useState('');
 
-  const loadSystemData = async () => {
+  // --- LAZY LOADING IMPLEMENTATION ---
+  // Ref-based load/loading flags avoid the stale-closure problem of checking
+  // `state.length === 0` (which caused duplicate parallel fetches whenever
+  // multiple loaders ran together, e.g. on the default 'slots' tab).
+  const hospitalsRef = useRef({ loaded: false, loading: false });
+  const departmentsRef = useRef({ loaded: false, loading: false });
+  const doctorsRef = useRef({ loaded: false, loading: false });
+  const patientsRef = useRef({ loaded: false, loading: false });
+
+  const loadHospitals = async (force = false) => {
+    if (hospitalsRef.current.loading) return;
+    if (hospitalsRef.current.loaded && !force) return;
+    hospitalsRef.current.loading = true;
     try {
-      const res = await axios.get(`${API_BASE_URL}/system-overview`);
-      setHospitals(res.data.hospitals || []);
-      setDoctors(res.data.doctors || []);
-      setDepartments(res.data.departments || []);
-    } catch (err) { console.error("Error fetching data from system-overview"); }
+      const res = await axios.get(`${API_BASE_URL}/admin/hospitals`, { headers: { Authorization: `Bearer ${token}` } });
+      setHospitals(res.data || []);
+      hospitalsRef.current.loaded = true;
+    } catch (err) { console.error("Error fetching hospitals"); }
+    finally { hospitalsRef.current.loading = false; }
   };
 
-  // NEW: Load Patients function
-  const loadPatients = async () => {
+  const loadDepartments = async (force = false) => {
+    if (departmentsRef.current.loading) return;
+    if (departmentsRef.current.loaded && !force) return;
+    departmentsRef.current.loading = true;
+    try {
+      // Departments usually need Hospital data to map names, so load both
+      if (!hospitalsRef.current.loaded) await loadHospitals();
+      const res = await axios.get(`${API_BASE_URL}/admin/departments`, { headers: { Authorization: `Bearer ${token}` } });
+      setDepartments(res.data || []);
+      departmentsRef.current.loaded = true;
+    } catch (err) { console.error("Error fetching departments"); }
+    finally { departmentsRef.current.loading = false; }
+  };
+
+  const loadDoctors = async (force = false) => {
+    if (doctorsRef.current.loading) return;
+    if (doctorsRef.current.loaded && !force) return;
+    doctorsRef.current.loading = true;
+    try {
+      // Doctors form needs Hospitals and Departments, so load them if empty
+      if (!hospitalsRef.current.loaded) await loadHospitals();
+      if (!departmentsRef.current.loaded) await loadDepartments();
+      const res = await axios.get(`${API_BASE_URL}/admin/doctors`, { headers: { Authorization: `Bearer ${token}` } });
+      setDoctors(res.data || []);
+      doctorsRef.current.loaded = true;
+    } catch (err) { console.error("Error fetching doctors"); }
+    finally { doctorsRef.current.loading = false; }
+  };
+
+  const loadPatients = async (force = false) => {
+    if (patientsRef.current.loading) return;
+    if (patientsRef.current.loaded && !force) return;
+    patientsRef.current.loading = true;
     try {
       const res = await axios.get(`${API_BASE_URL}/admin/patients`, { headers: { Authorization: `Bearer ${token}` } });
       setPatients(res.data || []);
-    } catch (err) { console.error("Error fetching patient data"); }
+      patientsRef.current.loaded = true;
+    } catch (err) { console.error("Error fetching patients"); }
+    finally { patientsRef.current.loading = false; }
   };
 
+  // Effect triggers ONLY when activeTab changes
   useEffect(() => {
-    loadSystemData();
-    loadPatients(); // Load patients on mount
+    if (activeTab === 'hospitals') loadHospitals();
+    if (activeTab === 'departments') loadDepartments();
+    if (activeTab === 'doctors') loadDoctors();
+    if (activeTab === 'patients') loadPatients();
+    if (activeTab === 'slots') {
+      // Slots tab needs hospital, dept, and doctor data for the dropdowns
+      loadHospitals();
+      loadDepartments();
+      loadDoctors();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeTab]);
+
 
   const addSlotRow = () => setSlots([...slots, { date: '', start_time: '', end_time: '' }]);
   const removeSlotRow = (index) => setSlots(slots.filter((_, i) => i !== index));
@@ -71,10 +132,13 @@ function AdminDashboard() {
     const dataToSend = slots.map(s => ({ doctor_id: parseInt(docId), start_date: s.date, end_date: s.date, start_time: s.start_time, end_time: s.end_time }));
     try {
       await axios.post(`${API_BASE_URL}/admin/generate-slots`, dataToSend, { headers: { Authorization: `Bearer ${token}` } });
-      showStatusNotification(`Successfully generated 30-minute intervals automatically for Doctor ID: ${docId}`);
+      
+      const doctorName = selectedDoctorData ? selectedDoctorData.name : `ID: ${docId}`;
+      showStatusNotification(`Successfully created slots for ${doctorName}`);
+      
       setSlots([{ date: '', start_time: '', end_time: '' }]);
       if (viewDate) handleFetchSlots();
-    } catch { showStatusNotification("Failed to save automated slots. Check backend loop syntax parameters.", true); }
+    } catch { showStatusNotification("Failed to save automated slots.", true); }
   };
 
   const handleFetchSlots = async () => {
@@ -91,25 +155,41 @@ function AdminDashboard() {
     const { type, id } = deleteModal;
     setDeleteModal({ show: false, type: '', id: null, message: '' });
     try {
-      if (type === 'slot') { await axios.delete(`${API_BASE_URL}/slots/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Slot entry deleted cleanly."); handleFetchSlots(); }
-      else if (type === 'hospital') { await axios.delete(`${API_BASE_URL}/hospitals/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital reference system and child nodes pruned."); loadSystemData(); }
-      else if (type === 'department') { await axios.delete(`${API_BASE_URL}/departments/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Target diagnostic department entity dropped."); loadSystemData(); }
-      else if (type === 'doctor') { await axios.delete(`${API_BASE_URL}/doctors/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Doctor practitioner profiling block stripped out."); loadSystemData(); }
-    } catch { showStatusNotification("Execution failed. Record cascade constraint may be locked.", true); }
+      if (type === 'slot') { await axios.delete(`${API_BASE_URL}/admin/slots/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Slot deleted successfully."); handleFetchSlots(); }
+      else if (type === 'hospital') { await axios.delete(`${API_BASE_URL}/admin/hospitals/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital deleted successfully."); loadHospitals(true); }
+      else if (type === 'department') { await axios.delete(`${API_BASE_URL}/admin/departments/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Department deleted successfully."); loadDepartments(true); }
+      else if (type === 'doctor') { await axios.delete(`${API_BASE_URL}/admin/doctors/${id}`, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Doctor deleted successfully."); loadDoctors(true); }
+    } catch { showStatusNotification("Failed to delete record.", true); }
   };
 
-  const filteredDoctorsLeft = doctors.filter(d => d.name.toLowerCase().includes(leftSearchQuery.toLowerCase()) || d.id.toString() === leftSearchQuery);
+  const filteredDoctorsLeft = doctors.filter(d => {
+    const matchesName = d.name.toLowerCase().includes(leftSearchQuery.toLowerCase()) || d.id.toString() === leftSearchQuery;
+    const matchesHospital = slotFilterHospitalId ? d.hospital_id === parseInt(slotFilterHospitalId) : true;
+    const matchesDept = slotFilterDepartmentId ? d.departments?.some(dept => dept.id === parseInt(slotFilterDepartmentId)) : true;
+    
+    return matchesName && matchesHospital && matchesDept;
+  });
+
   const filteredDoctorsRight = doctors.filter(d => d.name.toLowerCase().includes(rightSearchQuery.toLowerCase()) || d.id.toString() === rightSearchQuery);
-  const selectDoctorLeft = (doctor) => { setDocId(doctor.id); setLeftSearchQuery(`${doctor.name} (ID: ${doctor.id})`); };
-  const selectDoctorRight = (doctor) => { setDocId(doctor.id); setRightSearchQuery(`${doctor.name} (ID: ${doctor.id})`); };
+  
+  const selectDoctorLeft = (doctor) => { 
+    setDocId(doctor.id); 
+    setLeftSearchQuery(`${doctor.name}`); 
+    setSelectedDoctorData(doctor); 
+  };
+  
+  const selectDoctorRight = (doctor) => { 
+    setDocId(doctor.id); 
+    setRightSearchQuery(`${doctor.name}`); 
+  };
 
   const handleHospitalSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (hospForm.id) { await axios.put(`${API_BASE_URL}/hospitals/${hospForm.id}`, { name: hospForm.name, location: hospForm.location }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital data modified successfully."); }
-      else { await axios.post(`${API_BASE_URL}/hospitals/bulk`, [{ name: hospForm.name, location: hospForm.location }], { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Hospital "${hospForm.name}" registered safely.`); }
-      setHospForm({ id: null, name: '', location: '' }); loadSystemData();
-    } catch { showStatusNotification("Hospital transaction processing failed.", true); }
+      if (hospForm.id) { await axios.put(`${API_BASE_URL}/admin/hospitals/${hospForm.id}`, { name: hospForm.name, location: hospForm.location }, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Hospital updated successfully."); }
+      else { await axios.post(`${API_BASE_URL}/admin/hospitals/bulk`, [{ name: hospForm.name, location: hospForm.location }], { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Hospital "${hospForm.name}" added successfully.`); }
+      setHospForm({ id: null, name: '', location: '' }); loadHospitals(true);
+    } catch { showStatusNotification("Failed to save hospital.", true); }
   };
 
   const handleBulkHospitalSubmit = async (e) => {
@@ -118,44 +198,60 @@ function AdminDashboard() {
     const rows = bulkHospitalsInput.trim().split('\n');
     const hospitalPayloadArray = rows.map(row => { const parts = row.split(','); return { name: parts[0]?.trim() || '', location: parts[1]?.trim() || '' }; });
     try {
-      await axios.post(`${API_BASE_URL}/hospitals/bulk`, hospitalPayloadArray, { headers: { Authorization: `Bearer ${token}` } });
-      showStatusNotification(`Bulk saved ${hospitalPayloadArray.length} clinical facilities successfully.`);
-      setBulkHospitalsInput(''); loadSystemData();
-    } catch { showStatusNotification("Bulk operational load failed.", true); }
+      await axios.post(`${API_BASE_URL}/admin/hospitals/bulk`, hospitalPayloadArray, { headers: { Authorization: `Bearer ${token}` } });
+      showStatusNotification(`Successfully added ${hospitalPayloadArray.length} hospitals.`);
+      setBulkHospitalsInput(''); loadHospitals(true);
+    } catch { showStatusNotification("Failed to add hospitals in bulk.", true); }
   };
 
   const handleDepartmentSubmit = async (e) => {
     e.preventDefault();
     const payload = { name: deptForm.name, hospital_id: parseInt(deptForm.hospital_id) };
     try {
-      if (deptForm.id) { await axios.put(`${API_BASE_URL}/departments/${deptForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Department metrics modified successfully."); }
-      else { await axios.post(`${API_BASE_URL}/departments`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Department division "${deptForm.name}" activated.`); }
-      setDeptForm({ id: null, name: '', hospital_id: '' }); loadSystemData();
-    } catch { showStatusNotification("Department sync transaction error.", true); }
+      if (deptForm.id) { await axios.put(`${API_BASE_URL}/admin/departments/${deptForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification("Department updated successfully."); }
+      else { await axios.post(`${API_BASE_URL}/admin/departments`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Department "${deptForm.name}" added successfully.`); }
+      setDeptForm({ id: null, name: '', hospital_id: '' }); loadDepartments(true);
+    } catch { showStatusNotification("Failed to save department.", true); }
   };
 
   const handleBulkDepartmentSubmit = async (e) => {
     e.preventDefault();
-    if (!deptForm.hospital_id || !bulkDepartmentsInput.trim()) { showStatusNotification("Provide a valid Hospital ID inside the form field first.", true); return; }
+    if (!deptForm.hospital_id || !bulkDepartmentsInput.trim()) { showStatusNotification("Provide a valid Hospital first.", true); return; }
     const lines = bulkDepartmentsInput.trim().split('\n');
     try {
-      for (let line of lines) { if (line.trim()) await axios.post(`${API_BASE_URL}/departments`, { name: line.trim(), hospital_id: parseInt(deptForm.hospital_id) }, { headers: { Authorization: `Bearer ${token}` } }); }
-      showStatusNotification(`Successfully generated all line-pasted departments.`);
-      setBulkDepartmentsInput(''); loadSystemData();
-    } catch { showStatusNotification("Failed to finalize multi-row additions.", true); }
+      for (let line of lines) { if (line.trim()) await axios.post(`${API_BASE_URL}/admin/departments`, { name: line.trim(), hospital_id: parseInt(deptForm.hospital_id) }, { headers: { Authorization: `Bearer ${token}` } }); }
+      showStatusNotification(`Successfully added all departments.`);
+      setBulkDepartmentsInput(''); loadDepartments(true);
+    } catch { showStatusNotification("Failed to add departments in bulk.", true); }
   };
 
   const handleDoctorSubmit = async (e) => {
     e.preventDefault();
-    const payload = { name: docForm.name, email: docForm.email, password: docForm.password || "dummy123", phone: docForm.phone, role: "DOCTOR", specialization: docForm.specialization, years_of_experience: parseInt(docForm.years_of_experience), hospital_id: parseInt(docForm.hospital_id), department_id: parseInt(docForm.department_id) };
+    const payload = { 
+      name: docForm.name, 
+      email: docForm.email, 
+      password: docForm.password || "dummy123", 
+      phone: docForm.phone, 
+      role: "DOCTOR", 
+      specialization: docForm.specialization, 
+      years_of_experience: parseInt(docForm.years_of_experience), 
+      hospital_id: parseInt(docForm.hospital_id), 
+      department_ids: docForm.department_ids 
+    };
     try {
-      if (docForm.id) { await axios.put(`${API_BASE_URL}/doctors/${docForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name}'s profile criteria updated.`); }
-      else { await axios.post(`${API_BASE_URL}/doctors`, payload, { headers: { Authorization: `Bearer ${token}` } }); showStatusNotification(`Dr. ${docForm.name} integrated into active directory.`); }
-      setDocForm({ id: null, name: '', email: '', password: '', phone: '', specialization: '', years_of_experience: '', hospital_id: '', department_id: '' }); loadSystemData();
-    } catch { showStatusNotification("Personnel sync validation rejected.", true); }
+      if (docForm.id) { 
+        await axios.put(`${API_BASE_URL}/admin/doctors/${docForm.id}`, payload, { headers: { Authorization: `Bearer ${token}` } }); 
+        showStatusNotification(`${docForm.name} updated successfully.`); 
+      }
+      else { 
+        await axios.post(`${API_BASE_URL}/admin/doctors`, payload, { headers: { Authorization: `Bearer ${token}` } }); 
+        showStatusNotification(`${docForm.name} added successfully.`); 
+      }
+      setDocForm({ id: null, name: '', email: '', password: '', phone: '', specialization: '', years_of_experience: '', hospital_id: '', department_ids: [] }); 
+      loadDoctors(true);
+    } catch { showStatusNotification("Failed to save doctor.", true); }
   };
 
-  // NEW: Handle Patient Edit Submission
   const handlePatientSubmit = async (e) => {
     e.preventDefault();
     const pData = patientEditModal.data;
@@ -169,11 +265,10 @@ function AdminDashboard() {
       
       showStatusNotification(`Patient ${pData.name} updated successfully.`);
       setPatientEditModal({ show: false, data: null });
-      loadPatients(); // Refresh list to show new data
+      loadPatients(true);
     } catch { showStatusNotification("Failed to update patient details.", true); }
   };
 
-  /* ─── DEPT COLOR HELPER ─── */
   const deptStyle = (name) => {
     const map = {
       Cardiology:  { bg: '#FEF2F2', color: '#DC2626', border: '#FECACA' },
@@ -184,7 +279,6 @@ function AdminDashboard() {
     return map[name] || { bg: '#F1F5F9', color: '#475569', border: '#CBD5E1' };
   };
 
-  /* ─── DOCTOR AVATAR COLOR ─── */
   const avatarGradients = [
     'linear-gradient(135deg,#4F46E5,#7C3AED)',
     'linear-gradient(135deg,#0D9488,#14B8A6)',
@@ -196,8 +290,6 @@ function AdminDashboard() {
 
   return (
     <div style={{ backgroundColor: '#F0F4FF', minHeight: '100vh', fontFamily: "'Outfit', 'Segoe UI', sans-serif" }}>
-
-      {/* ── GOOGLE FONTS + TABLER ICONS (injected once) ── */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
         @import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css');
@@ -207,7 +299,7 @@ function AdminDashboard() {
         input[type="text"]:focus, input[type="email"]:focus,
         input[type="password"]:focus, input[type="number"]:focus,
         input[type="tel"]:focus, input[type="date"]:focus,
-        input[type="time"]:focus, textarea:focus {
+        input[type="time"]:focus, textarea:focus, select:focus {
           border-color: #3B82F6 !important;
           background: #fff !important;
           outline: none;
@@ -331,6 +423,7 @@ function AdminDashboard() {
                 <div style={S.fieldWrap}>
                   <label style={S.label}>Age</label>
                   <input type="number" required
+                    onWheel={(e) => e.target.blur()}
                     value={patientEditModal.data.age} 
                     onChange={e => setPatientEditModal({ ...patientEditModal, data: { ...patientEditModal.data, age: e.target.value } })} 
                     style={S.input} />
@@ -370,7 +463,7 @@ function AdminDashboard() {
           { key:'hospitals',   icon:'ti-building-hospital', label:'Hospitals Onboarding',   accent:'#10B981' },
           { key:'departments', icon:'ti-folders',           label:'Departments Onboarding', accent:'#F59E0B' },
           { key:'doctors',     icon:'ti-stethoscope',       label:'Doctors Directory',      accent:'#8B5CF6' },
-          { key:'patients',    icon:'ti-users-group',       label:'Patient Management',     accent:'#EC4899' }, // NEW TAB
+          { key:'patients',    icon:'ti-users-group',       label:'Patient Management',     accent:'#EC4899' },
         ].map(t => (
           <button key={t.key} className="cc-tab-btn"
             onClick={() => setActiveTab(t.key)}
@@ -433,19 +526,61 @@ function AdminDashboard() {
                   </div>
                   <div>
                     <div style={S.cardTitle}>Doctor Slot Entries Engine</div>
-                    <div style={S.cardSub}>Auto-generate 30-min appointment blocks</div>
+                    <div style={S.cardSub}>Filter by Hospital & Dept to select a Doctor</div>
                   </div>
                 </div>
                 <div style={S.cardBody}>
 
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14}}>
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>1. Select Hospital</label>
+                      <select 
+                        value={slotFilterHospitalId} 
+                        onChange={e => {
+                          setSlotFilterHospitalId(e.target.value);
+                          setSlotFilterDepartmentId('');
+                          setDocId('');
+                          setLeftSearchQuery('');
+                          setSelectedDoctorData(null);
+                        }} 
+                        style={S.input}
+                      >
+                        <option value="">All Hospitals...</option>
+                        {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div style={S.fieldWrap}>
+                      <label style={S.label}>2. Select Department</label>
+                      <select 
+                        value={slotFilterDepartmentId} 
+                        onChange={e => {
+                          setSlotFilterDepartmentId(e.target.value);
+                          setDocId('');
+                          setLeftSearchQuery('');
+                          setSelectedDoctorData(null);
+                        }} 
+                        style={S.input}
+                        disabled={!slotFilterHospitalId}
+                      >
+                        <option value="">All Departments...</option>
+                        {departments
+                          .filter(d => slotFilterHospitalId ? d.hospital_id === parseInt(slotFilterHospitalId) : true)
+                          .map(d => <option key={d.id} value={d.id}>{d.name}</option>)
+                        }
+                      </select>
+                    </div>
+                  </div>
+
                   {/* Doctor search */}
                   <div style={S.fieldWrap}>
-                    <label style={S.label}>Search Doctor by Name (For Creation)</label>
+                    <label style={S.label}>3. Search & Select Doctor</label>
                     <div style={{position:'relative'}}>
                       <i className="ti ti-search" style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'#9CA3AF',pointerEvents:'none'}} />
-                      <input type="text" placeholder="Type name or ID to select doctor for slots..."
+                      <input type="text" placeholder={!slotFilterDepartmentId ? "Pick Hospital & Dept first..." : "Type name or ID..."}
                         value={leftSearchQuery}
-                        onChange={e => { setLeftSearchQuery(e.target.value); if (!e.target.value) setDocId(''); }}
+                        disabled={!slotFilterDepartmentId}
+                        onChange={e => { setLeftSearchQuery(e.target.value); if (!e.target.value) { setDocId(''); setSelectedDoctorData(null); } }}
                         style={{...S.input, paddingLeft:34}} />
                       {leftSearchQuery && !docId && filteredDoctorsLeft.length > 0 && (
                         <div className="cc-dr-drop" style={S.dropdown}>
@@ -466,17 +601,19 @@ function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Selected doctor chip */}
-                  {docId && leftSearchQuery && (
+                  {/* Selected doctor chip with Hospital/Dept details */}
+                  {docId && selectedDoctorData && (
                     <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'linear-gradient(135deg,#EFF6FF,#F0FDF4)',border:'1px solid #93C5FD',borderRadius:10,marginBottom:14}}>
                       <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#4F46E5,#7C3AED)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white'}}>
-                        {leftSearchQuery.slice(0,2).toUpperCase()}
+                        {selectedDoctorData.name.slice(0,2).toUpperCase()}
                       </div>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:600,color:'#0B1D3A'}}>{leftSearchQuery}</div>
-                        <div style={{fontSize:11,color:'#8896AC'}}>Selected for slot creation</div>
+                        <div style={{fontSize:13,fontWeight:600,color:'#0B1D3A'}}>{selectedDoctorData.name}</div>
+                        <div style={{fontSize:11,color:'#8896AC'}}>
+                          {selectedDoctorData.hospital_name || 'Hospital'} • {selectedDoctorData.departments?.map(d=>d.name).join(', ') || 'No Departments Assigned'}
+                        </div>
                       </div>
-                      <div onClick={() => { setDocId(''); setLeftSearchQuery(''); }}
+                      <div onClick={() => { setDocId(''); setLeftSearchQuery(''); setSelectedDoctorData(null); }}
                         style={{width:22,height:22,borderRadius:'50%',background:'rgba(0,0,0,0.06)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:12,color:'#6B7280'}}>
                         ×
                       </div>
@@ -486,7 +623,6 @@ function AdminDashboard() {
                   <div style={{height:1,background:'#DDE4F0',margin:'16px 0'}} />
                   <div style={{fontSize:11,fontWeight:600,color:'#8896AC',textTransform:'uppercase',letterSpacing:'0.7px',marginBottom:10}}>Proposed Allocation Slots</div>
 
-                  {/* Column headers */}
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 36px',gap:8,marginBottom:6,padding:'0 2px'}}>
                     {['Slot Date','Start Time Block','End Time Block',''].map((h,i) => (
                       <div key={i} style={{fontSize:10.5,fontWeight:600,color:'#8896AC',textTransform:'uppercase',letterSpacing:'0.7px'}}>{h}</div>
@@ -712,15 +848,15 @@ function AdminDashboard() {
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead>
                       <tr style={{background:'#F8FAFF'}}>
-                        {['ID','Hospital Facility','Location','Actions'].map(h => (
+                        {['#','Hospital Facility','Location','Actions'].map(h => (
                           <th key={h} style={S.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {hospitals.map(h => (
+                      {hospitals.map((h, index) => (
                         <tr key={h.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
-                          <td style={S.td}><span style={S.idChip}>{h.id}</span></td>
+                          <td style={S.td}><span style={S.idChip}>{index + 1}</span></td>
                           <td style={S.td}>
                             <div style={{fontWeight:700,color:'#0B1D3A',fontSize:13}}>{h.name}</div>
                           </td>
@@ -778,9 +914,18 @@ function AdminDashboard() {
                         value={deptForm.name} onChange={e => setDeptForm({...deptForm,name:e.target.value})} style={S.input} />
                     </div>
                     <div style={S.fieldWrap}>
-                      <label style={S.label}>Parent Hospital ID</label>
-                      <input type="number" required placeholder="e.g. 1"
-                        value={deptForm.hospital_id} onChange={e => setDeptForm({...deptForm,hospital_id:e.target.value})} style={S.input} />
+                      <label style={S.label}>Assign to Hospital</label>
+                      <select 
+                        required 
+                        value={deptForm.hospital_id} 
+                        onChange={e => setDeptForm({...deptForm, hospital_id: e.target.value})} 
+                        style={S.input}
+                      >
+                        <option value="">Select a Hospital...</option>
+                        {hospitals.map(h => (
+                          <option key={h.id} value={h.id}>{h.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <button type="submit" className="cc-btn-save" style={S.btnPrimary}>
                       <i className="ti ti-device-floppy" /> {deptForm.id ? 'Update Department' : 'Save Department'}
@@ -835,23 +980,27 @@ function AdminDashboard() {
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead>
                       <tr style={{background:'#F8FAFF'}}>
-                        {['ID','Department Name','Hospital ID','Actions'].map(h => (
+                        {['#','Department Name','Hospital','Actions'].map(h => (
                           <th key={h} style={S.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {departments.map(d => {
+                      {departments.map((d, index) => {
                         const ds = deptStyle(d.name);
                         return (
                           <tr key={d.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
-                            <td style={S.td}><span style={S.idChip}>{d.id}</span></td>
+                            <td style={S.td}><span style={S.idChip}>{index + 1}</span></td>
                             <td style={S.td}>
                               <span style={{background:ds.bg,color:ds.color,border:`1px solid ${ds.border}`,borderRadius:20,fontSize:12,fontWeight:700,padding:'3px 12px'}}>
                                 {d.name}
                               </span>
                             </td>
-                            <td style={S.td}><span style={S.idChip}>{d.hospital_id}</span></td>
+                            <td style={S.td}>
+                              <span style={{fontWeight:600, color:'#4A5568'}}>
+                                {hospitals.find(h => h.id === d.hospital_id)?.name || `Hospital ID: ${d.hospital_id}`}
+                              </span>
+                            </td>
                             <td style={S.td}>
                               <div style={{display:'flex',gap:6}}>
                                 <button className="cc-btn-edit" onClick={() => setDeptForm(d)} style={S.btnEdit}>Edit</button>
@@ -911,13 +1060,13 @@ function AdminDashboard() {
                         value={docForm.phone} onChange={e => setDocForm({...docForm,phone:e.target.value})} style={S.input} />
                     </div>
                   </div>
-                  {!docForm.id && (
-                    <div style={S.fieldWrap}>
-                      <label style={S.label}>Password</label>
-                      <input type="password" required placeholder="••••••••"
-                        value={docForm.password} onChange={e => setDocForm({...docForm,password:e.target.value})} style={S.input} />
-                    </div>
-                  )}
+                  
+                  <div style={S.fieldWrap}>
+                    <label style={S.label}>Password</label>
+                    <input type="password" required={!docForm.id} placeholder={docForm.id ? "Leave blank to keep current" : "••••••••"}
+                      value={docForm.password} onChange={e => setDocForm({...docForm,password:e.target.value})} style={S.input} />
+                  </div>
+
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                     <div style={S.fieldWrap}>
                       <label style={S.label}>Specialization</label>
@@ -927,24 +1076,62 @@ function AdminDashboard() {
                     <div style={S.fieldWrap}>
                       <label style={S.label}>Experience (Years)</label>
                       <input type="number" required placeholder="10"
+                        onWheel={(e) => e.target.blur()} // Fix for scrolling changing the number
                         value={docForm.years_of_experience} onChange={e => setDocForm({...docForm,years_of_experience:e.target.value})} style={S.input} />
                     </div>
-                    <div style={S.fieldWrap}>
-                      <label style={S.label}>Hospital ID</label>
-                      <input type="number" required placeholder="1"
-                        value={docForm.hospital_id} onChange={e => setDocForm({...docForm,hospital_id:e.target.value})} style={S.input} />
-                    </div>
-                    <div style={S.fieldWrap}>
-                      <label style={S.label}>Department ID</label>
-                      <input type="number" required placeholder="1"
-                        value={docForm.department_id} onChange={e => setDocForm({...docForm,department_id:e.target.value})} style={S.input} />
+                  </div>
+                  
+                  <div style={S.fieldWrap}>
+                    <label style={S.label}>Primary Hospital</label>
+                    <select 
+                      required 
+                      value={docForm.hospital_id} 
+                      onChange={e => setDocForm({...docForm, hospital_id: e.target.value, department_ids: []})}
+                      style={S.input}
+                    >
+                      <option value="">Select a Hospital...</option>
+                      {hospitals.map(h => (
+                        <option key={h.id} value={h.id}>{h.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div style={S.fieldWrap}>
+                    <label style={S.label}>Assigned Departments</label>
+                    <div style={{...S.input, height: 'auto', maxHeight: 130, overflowY: 'auto', padding: '10px'}}>
+                      {!docForm.hospital_id ? (
+                        <div style={{color:'#9CA3AF', fontSize:12, fontStyle: 'italic'}}>Select a hospital first</div>
+                      ) : (
+                        departments
+                          .filter(d => d.hospital_id === parseInt(docForm.hospital_id))
+                          .map(d => (
+                            <label key={d.id} style={{display:'flex', alignItems:'center', gap:8, marginBottom:6, fontSize:13, cursor: 'pointer', color:'#0B1D3A'}}>
+                              <input
+                                type="checkbox"
+                                checked={docForm.department_ids.includes(d.id)}
+                                onChange={(e) => {
+                                  const newIds = e.target.checked
+                                    ? [...docForm.department_ids, d.id]
+                                    : docForm.department_ids.filter(id => id !== d.id);
+                                  setDocForm({...docForm, department_ids: newIds});
+                                }}
+                                style={{accentColor: '#3B82F6', width: 14, height: 14, cursor: 'pointer'}}
+                              />
+                              {d.name}
+                            </label>
+                          ))
+                      )}
+                      {docForm.hospital_id && departments.filter(d => d.hospital_id === parseInt(docForm.hospital_id)).length === 0 && (
+                        <div style={{color:'#9CA3AF', fontSize:12, fontStyle: 'italic'}}>No departments found for this hospital.</div>
+                      )}
                     </div>
                   </div>
+
                   <button type="submit" className="cc-btn-save" style={S.btnPrimary}>
                     <i className="ti ti-stethoscope" /> {docForm.id ? 'Update Doctor' : 'Register Doctor'}
                   </button>
                   {docForm.id && (
-                    <button type="button" onClick={() => setDocForm({id:null,name:'',email:'',password:'',phone:'',specialization:'',years_of_experience:'',hospital_id:'',department_id:''})} style={S.btnCancel}>
+                    <button type="button" onClick={() => setDocForm({id:null,name:'',email:'',password:'',phone:'',specialization:'',years_of_experience:'',hospital_id:'',department_ids:[]})} style={S.btnCancel}>
                       <i className="ti ti-x" /> Cancel Edit
                     </button>
                   )}
@@ -968,15 +1155,15 @@ function AdminDashboard() {
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead>
                       <tr style={{background:'#F8FAFF'}}>
-                        {['ID','Doctor','Contact Info','Specialization','Exp','Hosp / Dept','Actions'].map(h => (
+                        {['#','Doctor','Contact Info','Specialization','Exp','Assignments','Actions'].map(h => (
                           <th key={h} style={S.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {doctors.map(d => (
+                      {doctors.map((d, index) => (
                         <tr key={d.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
-                          <td style={S.td}><span style={S.idChip}>{d.id}</span></td>
+                          <td style={S.td}><span style={S.idChip}>{index + 1}</span></td>
                           <td style={S.td}>
                             <div style={{display:'flex',alignItems:'center',gap:9}}>
                               <div style={{width:32,height:32,borderRadius:'50%',background:avatarGrad(d.id),display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',flexShrink:0}}>
@@ -988,7 +1175,6 @@ function AdminDashboard() {
                               </div>
                             </div>
                           </td>
-                          {/* NEW CONTACT INFO CELL */}
                           <td style={S.td}>
                             <div style={{fontSize:12, color:'#4A5568'}}>
                               <div style={{fontWeight:600}}>{d.email}</div>
@@ -1006,12 +1192,29 @@ function AdminDashboard() {
                           </td>
                           <td style={S.td}>
                             <div style={{fontSize:12, color:'#4A5568', fontWeight:600}}>
-                              H: <span style={S.idChip}>{d.hospital_id}</span> D: <span style={S.idChip}>{d.department_id}</span>
+                              {d.hospital_name || 'No Hospital'}
+                              <div style={{fontSize:11, color:'#8896AC', fontWeight:400, marginTop:2}}>
+                                {d.departments && d.departments.length > 0 
+                                  ? d.departments.map(dept => dept.name).join(', ') 
+                                  : 'No Departments'}
+                              </div>
                             </div>
                           </td>
                           <td style={S.td}>
                             <div style={{display:'flex',gap:6}}>
-                              <button className="cc-btn-edit" onClick={() => setDocForm(d)} style={S.btnEdit}>Edit</button>
+                              <button className="cc-btn-edit" onClick={() => {
+                                setDocForm({
+                                  id: d.id,
+                                  name: d.name || '',
+                                  email: d.email || '',
+                                  phone: d.phone || '',
+                                  specialization: d.specialization || '',
+                                  years_of_experience: d.years_of_experience || '',
+                                  hospital_id: d.hospital_id || '',
+                                  department_ids: d.departments ? d.departments.map(dept => dept.id) : [],
+                                  password: '' // Explicitly clear password from form on edit
+                                });
+                              }} style={S.btnEdit}>Edit</button>
                               <button className="cc-btn-del" onClick={() => triggerDeleteConfirmation('doctor',d.id,`Delete Dr. ${d.name}?`)} style={S.btnDel}>Remove</button>
                             </div>
                           </td>
@@ -1052,15 +1255,15 @@ function AdminDashboard() {
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead>
                       <tr style={{background:'#F8FAFF'}}>
-                        {['ID', 'Patient Name', 'Contact Info', 'Age', 'Blood Group', 'Actions'].map(h => (
+                        {['#', 'Patient Name', 'Contact Info', 'Age', 'Blood Group', 'Actions'].map(h => (
                           <th key={h} style={S.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {patients.map(p => (
+                      {patients.map((p, index) => (
                         <tr key={p.id} className="cc-tr" style={{borderBottom:'1px solid #F0F4FF'}}>
-                          <td style={S.td}><span style={S.idChip}>{p.id}</span></td>
+                          <td style={S.td}><span style={S.idChip}>{index + 1}</span></td>
                           <td style={S.td}>
                             <div style={{display:'flex',alignItems:'center',gap:9}}>
                               <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#EC4899,#BE185D)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',flexShrink:0}}>

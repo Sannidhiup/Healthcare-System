@@ -46,10 +46,14 @@ class DepartmentCreate(BaseModel):
 # 4. DOCTOR SCHEMAS
 # ==========================================
 class DoctorCreate(UserCreate):
+    name: str
+    email: str
+    password: str
+    phone: str
     specialization: str
     years_of_experience: int
     hospital_id: int
-    department_id: int
+    department_ids: List[int]
 
 # ==========================================
 # 5. SLOT & BULK GENERATION
@@ -116,3 +120,31 @@ class PatientEditRequest(BaseModel):
     phone: str
     age: int
     blood_group: str
+
+    # ==========================================
+# ADD THESE TO schemas.py (do not remove existing classes)
+# ==========================================
+
+class OtpSendRequest(BaseModel):
+    phone: str
+
+    @field_validator('phone')
+    def validate_phone(cls, value):
+        if not re.match(r'^\d{10}$', value):
+            raise ValueError("Phone number must be exactly 10 digits")
+        return value
+
+class OtpVerifyRequest(BaseModel):
+    phone: str
+    otp: str
+
+    @field_validator('phone')
+    def validate_phone(cls, value):
+        if not re.match(r'^\d{10}$', value):
+            raise ValueError("Phone number must be exactly 10 digits")
+        return value
+
+# Patient registration now requires a registration_token
+# (issued only after OTP verification) in addition to the normal PatientCreate fields
+class PatientRegisterWithOtp(PatientCreate):
+    registration_token: str

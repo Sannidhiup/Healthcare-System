@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import Navbar from './Navbar';
+// ── NEW: Import ReactMarkdown ──
+import ReactMarkdown from 'react-markdown';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8001';
 
@@ -84,7 +86,6 @@ const ChevronDown = () => (
     <polyline points="6 9 12 15 18 9"/>
   </svg>
 );
-// NEW: Dictation Icons
 const MicIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
@@ -147,7 +148,6 @@ function DoctorDashboard() {
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState(''); 
 
-  // ── NEW: SPEECH RECOGNITION STATE & REF ──
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
 
@@ -156,7 +156,6 @@ function DoctorDashboard() {
     setTimeout(() => setNotification({ show: false, message: '', isError: false }), 4000);
   }, []);
 
-  // ── NEW: SPEECH RECOGNITION INITIALIZATION ──
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition && !recognitionRef.current) {
@@ -183,7 +182,6 @@ function DoctorDashboard() {
     }
   }, []);
 
-  // ── NEW: TOGGLE DICTATION ──
   const toggleListening = (e) => {
     e.preventDefault();
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -196,7 +194,7 @@ function DoctorDashboard() {
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
-      setChatInput(''); // Clear input before fresh dictation
+      setChatInput(''); 
       recognitionRef.current.start();
       setIsListening(true);
     }
@@ -283,11 +281,11 @@ function DoctorDashboard() {
     } finally { setIsSaving(false); }
   };
 
+  // ── UPDATED: FETCH API FOR STREAMING LOGIC ──
   const handleSendChatMessage = async (e) => {
     e?.preventDefault();
     if (!chatInput.trim()) return;
 
-    // Turn off microphone if it was listening
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
       setIsListening(false);
@@ -296,19 +294,63 @@ function DoctorDashboard() {
     const userMessage = chatInput.trim();
     setChatInput('');
     setChatHistory(prev => [...prev, { sender: 'doctor', text: userMessage }]);
-    setIsTyping(true);
+    setIsTyping(true); // Show typing indicator while waiting for first response chunk
+
     const docName = localStorage.getItem('userName') || '';
     const formattedName = docName.startsWith('Dr') ? docName : `Dr. ${docName}`;
+    
     try {
-      const res = await axios.post(
-        `${API_BASE_URL}/doctor/chat`,
-        { patient_id: aiModal.patientId, question: userMessage, doctor_name: formattedName },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setChatHistory(prev => [...prev, { sender: 'ai', text: res.data.answer }]);
-    } catch {
-      setChatHistory(prev => [...prev, { sender: 'ai', text: '⚠️ Error connecting to AI. Please try again.' }]);
-    } finally { setIsTyping(false); }
+      const response = await fetch(`${API_BASE_URL}/doctor/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          patient_id: aiModal.patientId, 
+          question: userMessage, 
+          doctor_name: formattedName 
+        })
+      });
+
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let done = false;
+      let firstChunkReceived = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setIsTyping(false); // Hide the dots once data starts flowing
+            // Create a new AI message for the first chunk
+            setChatHistory((prev) => [...prev, { sender: 'ai', text: chunk }]);
+          } else {
+            // Append chunk to the last message
+            setChatHistory((prev) => {
+              const updatedMessages = [...prev];
+              const lastIndex = updatedMessages.length - 1;
+              updatedMessages[lastIndex] = {
+                ...updatedMessages[lastIndex],
+                text: updatedMessages[lastIndex].text + chunk
+              };
+              return updatedMessages;
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error streaming chat:", error);
+      setIsTyping(false);
+      setChatHistory(prev => [...prev, { sender: 'ai', text: '⚠️ Error connecting to AI stream. Please try again.' }]);
+    }
   };
 
   const openAiModal = (appt) => {
@@ -365,6 +407,12 @@ function DoctorDashboard() {
         .btn-hover-purple:hover{ background:#3C3489 !important; }
         .tab-btn { transition: all .15s; }
         .chat-input:focus { border-color:#1D9E75 !important; outline:none; }
+        
+        /* ── NEW: Basic Markdown Styles to keep spacing clean ── */
+        .markdown-wrapper p { margin-top: 0; margin-bottom: 0.5rem; }
+        .markdown-wrapper p:last-child { margin-bottom: 0; }
+        .markdown-wrapper ul { margin-top: 0.25rem; margin-bottom: 0; padding-left: 1.25rem; }
+        .markdown-wrapper li { margin-bottom: 0.25rem; }
       `}</style>
 
       <Navbar />
@@ -421,15 +469,23 @@ function DoctorDashboard() {
                       AI
                     </div>
                   )}
+                  {/* ── UPDATED: Markdown Wrapper for AI Messages ── */}
                   <div style={{
-                    maxWidth:'78%', padding:'11px 15px', borderRadius:12, fontSize:13, lineHeight:1.55,
+                    maxWidth:'85%', padding:'11px 15px', borderRadius:12, fontSize:13, lineHeight:1.55,
                     background: msg.sender === 'doctor' ? '#0F6E56' : '#FFFFFF',
                     color: msg.sender === 'doctor' ? '#FFFFFF' : '#2C2C2A',
                     border: msg.sender === 'ai' ? '1px solid #EEECE5' : 'none',
                     borderBottomRightRadius: msg.sender === 'doctor' ? 4 : 12,
                     borderBottomLeftRadius: msg.sender === 'ai' ? 4 : 12,
+                    overflowWrap: 'break-word'
                   }}>
-                    {msg.text}
+                    {msg.sender === 'ai' ? (
+                      <div className="markdown-wrapper">
+                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      msg.text
+                    )}
                   </div>
                 </div>
               ))}
@@ -450,7 +506,6 @@ function DoctorDashboard() {
             {/* Chat input */}
             <form onSubmit={handleSendChatMessage} style={{ padding:'14px 18px', background:'#FFFFFF', borderTop:'1px solid #EEECE5', display:'flex', gap:10 }}>
               
-              {/* ── NEW: DICTATION BUTTON ── */}
               <button
                 onClick={toggleListening}
                 type="button"

@@ -236,15 +236,15 @@ function PatientDashboard() {
   // 1. Get doctors in this hospital
   const hospitalDoctors = doctors.filter(doc => doc.hospital_id === parseInt(selectedHospital));
   
-  // 2. Find which exact department IDs those doctors belong to
-  const availableDeptIds = [...new Set(hospitalDoctors.map(doc => doc.department_id))];
+  // 2. Find which exact department IDs those doctors belong to (flatten since a doctor can have multiple)
+  const availableDeptIds = [...new Set(hospitalDoctors.flatMap(doc => doc.department_ids || []))];
   
   // 3. Display only the Departments that actually exist in this hospital
   const hospitalDepartments = departments.filter(dep => availableDeptIds.includes(dep.id));
   
   // 4. Filter doctors by the selected department ID
   const validFilteredDoctorsList = hospitalDoctors.filter(doc => 
-    selectedDepartment ? doc.department_id === parseInt(selectedDepartment) : true
+    selectedDepartment ? (doc.department_ids || []).includes(parseInt(selectedDepartment)) : true
   );
 
   const handleFetchAvailableSlots = async () => {
@@ -836,10 +836,10 @@ function PatientDashboard() {
                       const thisRecords = myRecords.filter(r => r.path && r.path.includes(`appt_${appt.id}_`));
                       const initials = appt.doctor_name.replace('Dr. ', '').slice(0, 2).toUpperCase();
 
-                      // ── FIX 5: SHOW TRUE DATABASE DEPARTMENT NAME ──
+                      // ── FIX 5: SHOW TRUE DATABASE DEPARTMENT NAME (MANY-TO-MANY) ──
                       const docInfo = doctors.find(d => d.id === appt.doctor_id);
-                      const deptInfo = docInfo ? departments.find(dep => dep.id === docInfo.department_id) : null;
-                      const docSpecialty = deptInfo ? deptInfo.name : (docInfo ? docInfo.specialization : 'Specialist');
+                      const deptNames = docInfo ? departments.filter(dep => (docInfo.department_ids || []).includes(dep.id)).map(d => d.name) : [];
+                      const docSpecialty = deptNames.length > 0 ? deptNames.join(', ') : (docInfo ? docInfo.specialization : 'Specialist');
 
                       return (
                         <tr

@@ -2,15 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime, timedelta
+import re
 
 import models, schemas
 from database import get_db
 from dependencies import get_current_user
-from routers.auth import hash_password # Re-using the hash function
+from routers.auth import hash_password 
 
 router = APIRouter(prefix="/admin", tags=["Admin Operations"])
 
 # --- HOSPITALS ---
+@router.get("/hospitals")
+def get_all_hospitals(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
+    return db.query(models.Hospital).all()
+
 @router.post("/hospitals/bulk")
 def create_multiple_hospitals(data: List[schemas.HospitalCreate], db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
@@ -37,6 +43,11 @@ def delete_hospital(id: int, db: Session = Depends(get_db), current_user=Depends
     return {"msg": "Hospital and all related data removed."}
 
 # --- DEPARTMENTS ---
+@router.get("/departments")
+def get_all_departments(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
+    return db.query(models.Department).all()
+
 @router.post("/departments")
 def create_department(data: schemas.DepartmentCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
@@ -85,35 +96,110 @@ def edit_patient_details(user_id: int, data: PatientEditRequest, db: Session = D
     return {"msg": "Patient updated successfully"}
 
 # --- DOCTOR MANAGEMENT & SLOTS ---
+@router.get("/doctors")
+def get_all_doctors(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
+    doctors = db.query(models.Doctor).options(
+        joinedload(models.Doctor.user),
+        joinedload(models.Doctor.hospital),
+        joinedload(models.Doctor.departments)
+    ).all()
+    
+    return [{
+        "id": d.id,
+        "name": d.user.name,
+        "email": d.user.email, 
+        "phone": d.user.phone, 
+        "specialization": d.specialization,
+        "years_of_experience": d.years_of_experience,
+        "hospital_id": d.hospital_id,
+        "hospital_name": d.hospital.name if d.hospital else None,
+        "departments": [{"id": dept.id, "name": dept.name} for dept in d.departments]
+    } for d in doctors]
+
 @router.post("/doctors")
 def create_doctor(data: schemas.DoctorCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
-    new_user = models.User(name=data.name, email=data.email, password=hash_password(data.password), phone=data.phone, role="DOCTOR")
-    db.add(new_user)
-    db.flush()
-    new_doctor = models.Doctor(user_id=new_user.id, specialization=data.specialization, years_of_experience=data.years_of_experience, hospital_id=data.hospital_id, department_id=data.department_id)
-    db.add(new_doctor)
-    db.commit()
-    return {"msg": f"Doctor {new_user.name} registered."}
+    
+    # FIX: Moved IGNORECASE to the flags parameter to fix the 500 Regex error
+    clean_name = re.sub(r'^(dr\.\s*|dr\s+)+', 'Dr. ', data.name.strip(), flags=re.IGNORECASE)
+    
+    try:
+        # 1. Create the base User account first
+        new_user = models.User(name=clean_name, email=data.email, password=hash_password(data.password), phone=data.phone, role="DOCTOR")
+        db.add(new_user)
+        db.flush() # CRITICAL: This assigns an ID to new_user so the Doctor model can link to it
+        
+        # 2. Create the Doctor profile linked to the User
+        new_doctor = models.Doctor(
+            user_id=new_user.id, 
+            specialization=data.specialization, 
+            years_of_experience=data.years_of_experience, 
+            hospital_id=data.hospital_id
+        )
+        
+        # 3. Link Departments if provided
+        if data.department_ids:
+            departments = db.query(models.Department).filter(models.Department.id.in_(data.department_ids)).all()
+            new_doctor.departments = departments
+
+        db.add(new_doctor)
+        db.commit()
+        return {"msg": f"Doctor {new_user.name} registered with {len(new_doctor.departments)} departments."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Failed to create doctor. Ensure email is unique. System error: {str(e)}")
 
 @router.put("/doctors/{id}")
 def update_doctor(id: int, data: schemas.DoctorCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
+    
     doctor = db.query(models.Doctor).filter_by(id=id).first()
     if not doctor: raise HTTPException(404, "Doctor profile not found")
-    doctor.specialization, doctor.years_of_experience, doctor.hospital_id, doctor.department_id = data.specialization, data.years_of_experience, data.hospital_id, data.department_id
-    if doctor.user: doctor.user.name, doctor.user.phone = data.name, data.phone
+    
+    doctor.specialization = data.specialization
+    doctor.years_of_experience = data.years_of_experience
+    doctor.hospital_id = data.hospital_id
+   
+    # FIX: Moved IGNORECASE to the flags parameter
+    clean_name = re.sub(r'^(dr\.\s*|dr\s+)+', 'Dr. ', data.name.strip(), flags=re.IGNORECASE)
+    
+    if doctor.user: 
+        doctor.user.name = clean_name
+        doctor.user.phone = data.phone
+        # If admin tries to update the password and it is not the default dummy payload
+        if data.password and data.password != "dummy123":
+            doctor.user.password = hash_password(data.password)
+        
+    if data.department_ids is not None:
+        departments = db.query(models.Department).filter(models.Department.id.in_(data.department_ids)).all()
+        doctor.departments = departments
+
     db.commit()
-    return {"msg": "Doctor profile updated successfully"}
+    return {"msg": f"{clean_name}'s profile updated."}
 
 @router.delete("/doctors/{id}")
 def delete_doctor(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user["role"] != "ADMIN": raise HTTPException(403, "Admin only")
+    
     doctor = db.query(models.Doctor).filter_by(id=id).first()
     if not doctor: raise HTTPException(404, "Doctor not found")
-    db.delete(doctor.user)
+    
+    # 1. Delete all slots associated with this doctor FIRST to prevent Foreign Key blocks
+    db.query(models.DoctorSlot).filter_by(doctor_id=id).delete()
+    
+    # 2. Save the user reference
+    user_record = doctor.user
+    
+    # 3. Delete the Doctor profile
+    db.delete(doctor)
+    
+    # 4. Finally, delete the parent User record
+    if user_record:
+        db.delete(user_record)
+        
     db.commit()
-    return {"msg": "Doctor and linked user account removed cleanly"}
+    return {"msg": "Doctor, related slots, and user account removed cleanly."}
 
 @router.post("/generate-slots")
 def generate_slots_automatic_bulk(data: List[schemas.BulkSlotCreate], db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -132,3 +218,18 @@ def generate_slots_automatic_bulk(data: List[schemas.BulkSlotCreate], db: Sessio
             time_pointer = next_time_pointer
     db.commit()
     return {"msg": f"Successfully committed {count} intervals."}
+
+@router.delete("/slots/{id}")
+def delete_doctor_slot(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user["role"] != "ADMIN": 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
+        
+    slot = db.query(models.DoctorSlot).filter_by(id=id).first()
+    
+    if not slot: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Slot not found")
+        
+    db.delete(slot)
+    db.commit()
+    
+    return {"msg": "Slot entry deleted cleanly."}

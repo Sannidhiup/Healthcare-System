@@ -1,10 +1,20 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Date, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Date, Boolean, Table
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
 
 # ==========================================
-# 1. USER IDENTITY (Login Credentials)
+# ASSOCIATION TABLE (Many-to-Many)
+# ==========================================
+doctor_department_association = Table(
+    'doctor_departments',
+    Base.metadata,
+    Column('doctor_id', Integer, ForeignKey('doctors.id', ondelete="CASCADE"), primary_key=True),
+    Column('department_id', Integer, ForeignKey('departments.id', ondelete="CASCADE"), primary_key=True)
+)
+
+# ==========================================
+# 1. USER IDENTITY
 # ==========================================
 class User(Base):
     __tablename__ = "users"
@@ -13,13 +23,11 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password = Column(String)
     phone = Column(String, unique=True)
-    role = Column(String)  # "ADMIN", "PATIENT", or "DOCTOR"
+    role = Column(String)
     
-    # ── NEW: PERMANENT STORAGE FOR PASSWORD RESET OTPS ──
     reset_otp = Column(String, nullable=True)
     reset_otp_expire = Column(DateTime, nullable=True)
     
-    # cascade="all, delete-orphan" ensures if a user is deleted, their profile is too
     patient_profile = relationship("Patient", back_populates="user", uselist=False, cascade="all, delete-orphan")
     doctor_profile = relationship("Doctor", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
@@ -36,6 +44,7 @@ class Patient(Base):
     
     user = relationship("User", back_populates="patient_profile")
     appointments = relationship("Appointment", back_populates="patient", cascade="all, delete-orphan")
+    documents = relationship("PatientDocument", back_populates="patient", cascade="all, delete-orphan")
 
 # ==========================================
 # 3. HOSPITAL & DEPARTMENT
@@ -62,32 +71,30 @@ class Doctor(Base):
     specialization = Column(String)
     years_of_experience = Column(Integer)
     hospital_id = Column(Integer, ForeignKey("hospitals.id"))
-    department_id = Column(Integer, ForeignKey("departments.id"))
+    
+    departments = relationship("Department", secondary=doctor_department_association, backref="doctors")
     
     user = relationship("User", back_populates="doctor_profile")
     slots = relationship("DoctorSlot", back_populates="doctor", cascade="all, delete-orphan")
-    
-    # ✅ Link doctor directly to their hospital
     hospital = relationship("Hospital")
 
 # ==========================================
-# 5. DOCTOR SLOTS (The Manual Inventory)
+# 5. DOCTOR SLOTS
 # ==========================================
 class DoctorSlot(Base):
     __tablename__ = "doctor_slots"
     id = Column(Integer, primary_key=True, index=True)
     doctor_id = Column(Integer, ForeignKey("doctors.id"))
     date = Column(Date) 
-    start_time = Column(String) # e.g. "09:00"
-    end_time = Column(String)   # e.g. "09:30"
+    start_time = Column(String) 
+    end_time = Column(String)   
     is_booked = Column(Boolean, default=False)
     
     doctor = relationship("Doctor", back_populates="slots")
-    # CRITICAL: Added cascade here so deleting a slot cleans up the relationship logic
     appointment = relationship("Appointment", back_populates="slot", uselist=False, cascade="all, delete-orphan")
 
 # ==========================================
-# 6. APPOINTMENT (The Link & Clinical Notes)
+# 6. APPOINTMENT
 # ==========================================
 class Appointment(Base):
     __tablename__ = "appointments"
@@ -97,17 +104,26 @@ class Appointment(Base):
     slot_id = Column(Integer, ForeignKey("doctor_slots.id")) 
     hospital_id = Column(Integer, ForeignKey("hospitals.id"))
     
-    # Stores the actual date of the visit
     appointment_date = Column(Date) 
-    
-    # This default lambda handles the +5:30 offset for IST
     booked_at = Column(DateTime, default=lambda: datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30))
-    
     status = Column(String, default="SCHEDULED") 
-
-    # ── PERMANENT STORAGE FOR DOCTOR'S CLINICAL SUMMARY ──
     appointment_summary = Column(String, nullable=True)
 
     patient = relationship("Patient", back_populates="appointments")
     slot = relationship("DoctorSlot", back_populates="appointment")
     doctor = relationship("Doctor")
+
+# ==========================================
+# 7. PATIENT DOCUMENTS
+# ==========================================
+class PatientDocument(Base):
+    __tablename__ = "patient_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"))
+    appointment_id = Column(Integer, ForeignKey("appointments.id"), nullable=True)
+    name = Column(String)
+    path = Column(String)
+    url = Column(String)
+    uploaded_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", back_populates="documents")

@@ -43,15 +43,24 @@ def home():
 
 @app.get("/system-overview")
 def get_system_overview(db: Session = Depends(get_db)):
-    doctors = db.query(models.Doctor).options(joinedload(models.Doctor.user)).all()
+    doctors = db.query(models.Doctor).options(
+        joinedload(models.Doctor.user),
+        joinedload(models.Doctor.departments)   # eager-load the many-to-many relationship
+    ).all()
+    
     return {
         "hospitals": db.query(models.Hospital).all(),
         "departments": db.query(models.Department).all(),
         "doctors": [
             {
-                "id": d.id, "name": d.user.name, "email": d.user.email, "phone": d.user.phone, 
-                "specialization": d.specialization, "years_of_experience": d.years_of_experience, 
-                "hospital_id": d.hospital_id, "department_id": d.department_id             
+                "id": d.id, 
+                "name": d.user.name, 
+                "email": d.user.email, 
+                "phone": d.user.phone, 
+                "specialization": d.specialization, 
+                "years_of_experience": d.years_of_experience, 
+                "hospital_id": d.hospital_id, 
+                "department_ids": [dept.id for dept in d.departments]   # list now, not a single id
             } for d in doctors
         ]
     }
